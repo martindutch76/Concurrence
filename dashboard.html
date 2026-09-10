@@ -459,7 +459,13 @@
         keywords: noMeeting ? [] : back.querySelector('#sKeywords').value.split(',').map(x=>x.trim()).filter(Boolean)
       };
       const { error } = await sb.from('sessions').upsert(payload, { onConflict: 'node_id,session_date' });
-      if(error){ back.querySelector('#sErr').textContent = error.message; btn.disabled=false; btn.textContent='Save'; return; }
+      if(error){
+        const { data: diag } = await sb.rpc('debug_session_check', { check_node_id: nodeId });
+        const d = (diag && diag[0]) ? diag[0] : null;
+        back.querySelector('#sErr').innerHTML = `${esc(error.message)}<br><br><b>Diagnostic:</b><br>` +
+          (d ? `my_email: ${esc(d.my_email)}<br>node_org_id: ${esc(d.node_org_id)}<br>my_org_id: ${esc(d.my_org_id)}<br>approved: ${esc(String(d.approved))}` : 'diagnostic call also failed');
+        btn.disabled=false; btn.textContent='Save'; return;
+      }
       back.remove();
       onSaved();
     };
