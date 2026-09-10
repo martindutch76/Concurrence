@@ -458,7 +458,13 @@
         video_url: noMeeting ? null : (back.querySelector('#sVideo').value.trim() || null),
         keywords: noMeeting ? [] : back.querySelector('#sKeywords').value.split(',').map(x=>x.trim()).filter(Boolean)
       };
-      const { error } = await sb.from('sessions').upsert(payload, { onConflict: 'node_id,session_date' });
+      // Explicit insert-or-update instead of .upsert() — avoids Postgres's
+      // documented RLS quirk around ON CONFLICT DO UPDATE requiring wider
+      // table visibility than a plain insert, without loosening any policy.
+      const op = session && session.id
+        ? sb.from('sessions').update(payload).eq('id', session.id)
+        : sb.from('sessions').insert(payload);
+      const { error } = await op;
       if(error){
         const { data: diag } = await sb.rpc('debug_session_check', { check_node_id: nodeId });
         const d = (diag && diag[0]) ? diag[0] : null;
