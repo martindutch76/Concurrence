@@ -350,6 +350,7 @@
         </div>
       </div>
       ${editorLine}
+      <div id="sessionMount" style="margin-top:14px;"></div>
     `;
 
     if(isApproved){
@@ -358,7 +359,110 @@
       };
     }
 
+    await renderSession(deepest.id, orgLabel, start.toISODate(), isApproved, ()=> renderMyMeeting(profile, nodePath, isApproved));
+
     return { meeting, start, end };
+  }
+
+  // ---------- This week's session: topic, presenter, keywords, in-person/video, no-meeting ----------
+  async function renderSession(nodeId, orgLabel, isoDate, isApproved, onSaved){
+    const box = document.getElementById('sessionMount');
+    if(!box) return;
+    box.innerHTML = `<div class="loading" style="padding:14px 0;">Loading this week's topic…</div>`;
+
+    const { data, error } = await sb.rpc('get_sessions_for_node', {
+      check_node_id: nodeId, from_date: isoDate, to_date: isoDate
+    });
+    if(error){ box.innerHTML = `<div class="err">${esc(error.message)}</div>`; return; }
+    const session = (data && data[0]) ? data[0] : null;
+
+    if(session && session.no_meeting){
+      box.innerHTML = `
+        <div style="background:repeating-linear-gradient(135deg,var(--card),var(--card) 8px,#F1EEE6 8px,#F1EEE6 16px);border:1px dashed var(--stone-line);border-radius:6px;padding:14px 16px;">
+          <div style="font-weight:600;font-size:13px;color:var(--ink-soft);">No meeting this week${session.no_meeting_reason ? ' — '+esc(session.no_meeting_reason) : ''}</div>
+          ${isApproved ? '<button class="btn ghost" id="sessEditBtn" style="margin-top:8px;border:1px solid var(--stone-line);color:var(--ink);">Edit</button>' : ''}
+        </div>`;
+      if(isApproved) document.getElementById('sessEditBtn').onclick = ()=> openSessionModal(nodeId, orgLabel, isoDate, session, onSaved);
+      return;
+    }
+
+    if(!session || !session.topic){
+      box.innerHTML = `
+        <div style="border:1px dashed var(--stone-line);border-radius:6px;padding:14px 16px;">
+          <div style="color:var(--ink-soft);font-size:13px;">No topic set for this week yet.</div>
+          ${isApproved ? '<button class="btn brass" id="sessEditBtn" style="margin-top:8px;">Add topic</button>' : ''}
+        </div>`;
+      if(isApproved) document.getElementById('sessEditBtn').onclick = ()=> openSessionModal(nodeId, orgLabel, isoDate, session, onSaved);
+      return;
+    }
+
+    const kwHtml = (session.keywords||[]).map(k=>`<span style="display:inline-block;background:var(--stone);border-radius:10px;padding:1px 8px;font-size:10.5px;color:var(--ink-soft);margin-right:4px;">${esc(k)}</span>`).join('');
+    box.innerHTML = `
+      <div style="border:1px solid var(--stone-line);border-radius:6px;padding:14px 16px;background:var(--card);">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
+          <div>
+            <div style="font-size:13.5px;font-weight:600;">${esc(session.topic)}</div>
+            <div style="font-size:12px;color:var(--ink-soft);margin-top:2px;">${session.presenter ? esc(session.presenter)+' · ' : ''}${session.in_person ? 'In person' : ''}${session.in_person && session.video_url ? ' & ' : ''}${session.video_url ? 'Online' : ''}</div>
+            <div style="margin-top:6px;">${kwHtml}</div>
+          </div>
+          ${isApproved ? '<button class="btn ghost" id="sessEditBtn" style="border:1px solid var(--stone-line);color:var(--ink);flex:none;">Edit</button>' : ''}
+        </div>
+      </div>`;
+    if(isApproved) document.getElementById('sessEditBtn').onclick = ()=> openSessionModal(nodeId, orgLabel, isoDate, session, onSaved);
+  }
+
+  function openSessionModal(nodeId, orgLabel, isoDate, session, onSaved){
+    const s = session || {};
+    const dateLabel = DateTime.fromISO(isoDate).toFormat('cccc d LLL');
+    const back = document.createElement('div');
+    back.style.cssText = 'position:fixed;inset:0;background:rgba(20,20,18,0.45);display:flex;align-items:center;justify-content:center;z-index:60;padding:16px;';
+    back.innerHTML = `
+      <div style="background:#fff;border-radius:8px;padding:22px 24px;max-width:420px;width:100%;max-height:86vh;overflow:auto;">
+        <h3 class="serif" style="margin:0 0 4px;font-size:16px;">${esc(orgLabel)} — ${esc(dateLabel)}</h3>
+        <label style="display:flex;align-items:flex-start;gap:8px;margin:14px 0;cursor:pointer;">
+          <input type="checkbox" id="sNoMeeting" ${s.no_meeting ? 'checked' : ''} style="margin-top:3px;">
+          <span style="font-size:12.5px;color:var(--ink-soft);"><b style="color:var(--ink);">No meeting this week</b><br>Public holidays, school holidays, etc.</span>
+        </label>
+        <div id="sFields" style="display:flex;flex-direction:column;gap:9px;${s.no_meeting?'opacity:0.4;pointer-events:none;':''}">
+          <input type="text" id="sTopic" placeholder="Topic" value="${esc(s.topic||'')}" style="padding:8px 10px;border:1px solid var(--stone-line);border-radius:5px;font-family:inherit;font-size:13px;">
+          <input type="text" id="sPresenter" placeholder="Presenter name" value="${esc(s.presenter||'')}" style="padding:8px 10px;border:1px solid var(--stone-line);border-radius:5px;font-family:inherit;font-size:13px;">
+          <label style="display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--ink-soft);"><input type="checkbox" id="sInPerson" ${s.in_person!==false?'checked':''}> In person</label>
+          <input type="text" id="sVideo" placeholder="Video link (leave blank if not online)" value="${esc(s.video_url||'')}" style="padding:8px 10px;border:1px solid var(--stone-line);border-radius:5px;font-family:inherit;font-size:13px;">
+          <input type="text" id="sKeywords" placeholder="Keywords, comma separated" value="${esc((s.keywords||[]).join(', '))}" style="padding:8px 10px;border:1px solid var(--stone-line);border-radius:5px;font-family:inherit;font-size:13px;">
+        </div>
+        <div id="sErr" style="font-size:11.5px;color:var(--ember);min-height:14px;margin-top:8px;"></div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px;">
+          <button class="btn ghost" id="sCancel" style="border:1px solid var(--stone-line);color:var(--ink);">Cancel</button>
+          <button class="btn brass" id="sSave">Save</button>
+        </div>
+      </div>`;
+    document.body.appendChild(back);
+    back.addEventListener('click', e=>{ if(e.target===back) back.remove(); });
+    back.querySelector('#sCancel').onclick = ()=> back.remove();
+    back.querySelector('#sNoMeeting').onchange = function(){
+      const f = back.querySelector('#sFields');
+      f.style.opacity = this.checked ? '0.4' : '1';
+      f.style.pointerEvents = this.checked ? 'none' : 'auto';
+    };
+    back.querySelector('#sSave').onclick = async ()=>{
+      const btn = back.querySelector('#sSave'); btn.disabled = true; btn.textContent = 'Saving…';
+      const noMeeting = back.querySelector('#sNoMeeting').checked;
+      const payload = {
+        node_id: nodeId,
+        session_date: isoDate,
+        no_meeting: noMeeting,
+        no_meeting_reason: noMeeting ? 'Flagged by an organisational contact' : null,
+        topic: noMeeting ? null : back.querySelector('#sTopic').value.trim() || null,
+        presenter: noMeeting ? null : back.querySelector('#sPresenter').value.trim() || null,
+        in_person: noMeeting ? true : back.querySelector('#sInPerson').checked,
+        video_url: noMeeting ? null : (back.querySelector('#sVideo').value.trim() || null),
+        keywords: noMeeting ? [] : back.querySelector('#sKeywords').value.split(',').map(x=>x.trim()).filter(Boolean)
+      };
+      const { error } = await sb.from('sessions').upsert(payload, { onConflict: 'node_id,session_date' });
+      if(error){ back.querySelector('#sErr').textContent = error.message; btn.disabled=false; btn.textContent='Save'; return; }
+      back.remove();
+      onSaved();
+    };
   }
 
   // ---------- Concurrent Meetings: same hierarchy level, overlapping time, same org ----------
