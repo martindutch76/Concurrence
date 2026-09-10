@@ -107,7 +107,8 @@
       ]);
 
       renderSidebar(org ? org.name : '', nodePath, profile);
-      await renderMyMeeting(profile, nodePath, !!isApproved);
+      const own = await renderMyMeeting(profile, nodePath, !!isApproved);
+      await renderConcurrentMeetings(nodePath, own);
     } catch(err){
       console.error('Dashboard failed to load:', err);
       const msg = (err && err.message) ? err.message : String(err);
@@ -124,7 +125,7 @@
     let guard = 0;
     while(currentId && guard < 10){
       guard++;
-      const { data: node } = await sb.from('hierarchy_nodes').select('id,name,parent_id').eq('id', currentId).maybeSingle();
+      const { data: node } = await sb.from('hierarchy_nodes').select('id,name,parent_id,level_id,org_id').eq('id', currentId).maybeSingle();
       if(!node) break;
       path.unshift(node);
       currentId = node.parent_id;
@@ -305,11 +306,12 @@
         <div class="avatar">${esc((profile.first_name||' ')[0])}${esc((profile.last_name||' ')[0])}</div>
       </div>
       <div id="meetingCardMount"><div class="loading">Loading your meeting…</div></div>
+      <div id="concurrentMount"></div>
     `;
 
     if(!deepest){
       document.getElementById('meetingCardMount').innerHTML = `<div class="empty">No group on file for your account yet.</div>`;
-      return;
+      return null;
     }
 
     const { data: meeting, error } = await sb
@@ -319,8 +321,8 @@
       .maybeSingle();
 
     const mount = document.getElementById('meetingCardMount');
-    if(error){ mount.innerHTML = `<div class="err">Couldn't load your meeting: ${esc(error.message)}</div>`; return; }
-    if(!meeting){ mount.innerHTML = `<div class="empty">No meeting has been set up for ${esc(orgLabel)} yet.</div>`; return; }
+    if(error){ mount.innerHTML = `<div class="err">Couldn't load your meeting: ${esc(error.message)}</div>`; return null; }
+    if(!meeting){ mount.innerHTML = `<div class="empty">No meeting has been set up for ${esc(orgLabel)} yet.</div>`; return null; }
 
     const { start, end } = nextOccurrence(meeting.day_of_week, meeting.start_time, meeting.end_time, meeting.timezone);
     const whenLabel = start.toFormat('ccc d LLL · h:mma').toLowerCase().replace(/^\w/, c=>c.toUpperCase());
@@ -355,6 +357,79 @@
         openEditMeetingModal(deepest.id, orgLabel, meeting, ()=> renderMyMeeting(profile, nodePath, isApproved));
       };
     }
+
+    return { meeting, start, end };
+  }
+
+  // ---------- Concurrent Meetings: same hierarchy level, overlapping time, same org ----------
+  async function renderConcurrentMeetings(nodePath, own){
+    const box = document.getElementById('concurrentMount');
+    if(!box) return;
+    const deepest = nodePath.length ? nodePath[nodePath.length-1] : null;
+    if(!deepest || !own){ box.innerHTML = ''; return; }
+
+    box.innerHTML = `
+      <div style="margin-top:26px;">
+        <h2 class="serif" style="font-size:17px;font-weight:500;margin:0 0 4px;">Concurrent Meetings</h2>
+        <p style="font-size:12px;color:var(--ink-soft);margin:0 0 12px;">Other ${esc('groups')} at the same level as yours, meeting at an overlapping time — converted to your local time.</p>
+        <div id="concurrentList" class="loading">Checking for overlaps…</div>
+      </div>
+    `;
+    const listEl = document.getElementById('concurrentList');
+
+    const { data: peers, error: peersErr } = await sb
+      .from('hierarchy_nodes')
+      .select('id,name')
+      .eq('org_id', deepest.org_id)
+      .eq('level_id', deepest.level_id)
+      .neq('id', deepest.id);
+
+    if(peersErr){ listEl.innerHTML = `<div class="err">${esc(peersErr.message)}</div>`; return; }
+    if(!peers || !peers.length){ listEl.innerHTML = `<div class="empty">No other groups at your level yet.</div>`; return; }
+
+    const { data: meetings, error: meetErr } = await sb
+      .from('meetings')
+      .select('node_id, frequency, day_of_week, start_time, end_time, timezone, address')
+      .in('node_id', peers.map(p=>p.id));
+
+    if(meetErr){ listEl.innerHTML = `<div class="err">${esc(meetErr.message)}</div>`; return; }
+
+    const overlaps = [];
+    (meetings||[]).forEach(m=>{
+      const peer = peers.find(p=>p.id===m.node_id);
+      if(!peer) return;
+      const occ = nextOccurrence(m.day_of_week, m.start_time, m.end_time, m.timezone);
+      const overlapStartMs = Math.max(occ.start.toMillis(), own.start.toMillis());
+      const overlapEndMs = Math.min(occ.end.toMillis(), own.end.toMillis());
+      const overlapMin = Math.round((overlapEndMs - overlapStartMs) / 60000);
+      if(overlapMin > 0){
+        overlaps.push({ name: peer.name, meeting: m, occ, overlapMin });
+      }
+    });
+    overlaps.sort((a,b)=> b.overlapMin - a.overlapMin);
+
+    if(!overlaps.length){
+      listEl.innerHTML = `<div class="empty">No other groups at your level currently overlap with your meeting time.</div>`;
+      return;
+    }
+
+    listEl.style.cssText = 'display:flex;gap:12px;overflow-x:auto;padding-bottom:6px;';
+    listEl.innerHTML = overlaps.map(o=>{
+      const yourStart = o.occ.start.setZone(own.start.zoneName);
+      const yourEnd = o.occ.end.setZone(own.start.zoneName);
+      const sameZone = own.start.zoneName === o.occ.start.zoneName;
+      const timeLabel = `${yourStart.toFormat('h:mma')}–${yourEnd.toFormat('h:mma')}`;
+      const theirLabel = sameZone ? 'same time zone as you' : `${o.occ.start.toFormat('h:mma')}–${o.occ.end.toFormat('h:mma')} their time`;
+      return `
+        <div style="flex:none;width:200px;background:var(--card);border:1px solid var(--stone-line);border-radius:6px;padding:13px 14px;">
+          <div style="font-size:12.5px;font-weight:600;margin-bottom:2px;">${esc(o.name)}
+            <span style="display:inline-block;background:#F2E4C6;color:#8A6A24;border-radius:10px;padding:1px 7px;font-size:10px;font-weight:600;margin-left:4px;">${o.overlapMin} min</span>
+          </div>
+          <div style="font-size:12px;font-weight:600;margin:5px 0 1px;">${timeLabel}</div>
+          <div style="font-size:10.5px;color:var(--ink-soft);margin-bottom:6px;">${esc(theirLabel)}</div>
+          <div style="font-size:11px;color:var(--ink-soft);">${esc(o.meeting.address || 'No address on file')}</div>
+        </div>`;
+    }).join('');
   }
 
   boot();
