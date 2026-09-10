@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Concurrence — Set up your account</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<style>
+  :root{
+    --night:#14262B; --night-deep:#0D1A1D;
+    --brass:#C99A3E; --brass-soft:#E3C077;
+    --ember:#B65C38; --stone:#EDE6D6; --stone-line:#D9CFB7;
+    --ink:#1B2422; --ink-soft:#5B655F; --card:#FFFFFF;
+  }
+  *{ box-sizing:border-box; }
+  body{
+    margin:0; background:var(--stone); min-height:100vh;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    color:var(--ink); display:flex; align-items:flex-start; justify-content:center;
+    padding:40px 20px;
+  }
+  .serif{ font-family:"New York",ui-serif,Georgia,"Times New Roman",serif; }
+  .wrap{ width:100%; max-width:460px; }
+  .brand-row{ display:flex; align-items:center; gap:9px; margin-bottom:22px; }
+  .brand-row svg{ width:24px; height:24px; }
+  .brand-row span{ font-size:16px; font-weight:500; color:var(--night); }
+  .card{ background:var(--card); border-radius:8px; padding:28px 26px; box-shadow:0 10px 30px rgba(20,38,43,0.08); border:1px solid var(--stone-line); min-height:120px; }
+  .card .kicker{ font-size:11px; letter-spacing:0.03em; color:var(--ink-soft); text-transform:uppercase; margin-bottom:6px; }
+  .card h1{ font-size:20px; margin:0 0 8px; font-weight:500; }
+  .card .sub{ font-size:13px; color:var(--ink-soft); line-height:1.55; margin:0 0 20px; }
+  label{ display:block; font-size:11.5px; color:var(--ink-soft); margin-bottom:5px; margin-top:14px; }
+  label:first-of-type{ margin-top:0; }
+  input[type=text], input[type=time], select{
+    width:100%; padding:10px 11px; border:1px solid var(--stone-line); border-radius:5px;
+    font-size:13.5px; font-family:inherit; color:var(--ink);
+  }
+  input:focus, select:focus{ outline:2px solid var(--night); outline-offset:1px; }
+  .field-wrap{ position:relative; }
+  .suggest{ position:absolute; top:100%; left:0; right:0; background:#fff; border:1px solid var(--stone-line); border-top:none; border-radius:0 0 5px 5px; z-index:5; max-height:160px; overflow:auto; box-shadow:0 6px 14px rgba(0,0,0,0.08); }
+  .suggest .opt{ padding:8px 11px; font-size:13px; cursor:pointer; }
+  .suggest .opt:hover{ background:var(--stone); }
+  .suggest .opt.new{ color:var(--brass); font-weight:600; }
+  .hint{ font-size:11px; color:var(--ink-soft); margin-top:5px; }
+  .row2{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .btn{ background:var(--night); color:#fff; border:none; padding:11px 16px; border-radius:5px; font-size:13px; font-weight:600; cursor:pointer; }
+  .btn:hover{ background:var(--night-deep); }
+  .btn.ghost{ background:transparent; color:var(--ink-soft); padding:11px 6px; }
+  .btn:disabled{ opacity:0.4; cursor:not-allowed; }
+  .actions{ display:flex; justify-content:space-between; align-items:center; margin-top:24px; }
+  .node-banner{ border-radius:6px; padding:12px 14px; font-size:12.5px; margin-bottom:18px; }
+  .node-banner.existing{ background:#DDEAE0; color:#2E6B44; }
+  .node-banner.new{ background:#F2E9D3; color:#8A6A24; }
+  .node-banner.blocked{ background:#F3DCD5; color:#8A3B26; }
+  .done-icon{ width:48px; height:48px; border-radius:50%; background:#DDEAE0; color:#2E6B44; display:flex; align-items:center; justify-content:center; margin:0 auto 16px; }
+  .done-icon svg{ width:22px; height:22px; }
+  .center{ text-align:center; }
+  .cant-find{ font-size:12px; color:var(--ink-soft); background:var(--stone); border-radius:5px; padding:10px 12px; margin-top:8px; line-height:1.5; }
+  .err{ font-size:11.5px; color:var(--ember); margin-top:6px; }
+  .loading{ text-align:center; color:var(--ink-soft); font-size:13px; padding:30px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand-row">
+    <svg viewBox="0 0 120 120">
+      <path d="M 107.55 75.45 Q 85.02 75.63 68.56 62.78" stroke="#14262B" stroke-width="1.4" stroke-linecap="round" fill="none" opacity="0.55"/>
+      <path d="M 66.12 103.57 Q 68.19 85.20 61.25 68.91" stroke="#14262B" stroke-width="2.2" stroke-linecap="round" fill="none" opacity="0.8"/>
+      <path d="M 27.37 101.76 Q 34.92 78.22 54.46 67.09" stroke="#14262B" stroke-width="1.1" stroke-linecap="round" fill="none" opacity="0.4"/>
+      <path d="M 13.06 57.54 Q 32.11 62.44 51.01 59.53" stroke="#14262B" stroke-width="3.0" stroke-linecap="round" fill="none" opacity="1.0"/>
+      <path d="M 30.32 12.51 Q 48.88 29.46 55.23 52.37" stroke="#14262B" stroke-width="1.6" stroke-linecap="round" fill="none" opacity="0.6"/>
+      <path d="M 81.13 20.27 Q 67.44 34.05 64.23 52.05" stroke="#14262B" stroke-width="2.4" stroke-linecap="round" fill="none" opacity="0.85"/>
+      <circle cx="60" cy="60" r="7" fill="#C99A3E"/>
+    </svg>
+    <span class="serif">Concurrence</span>
+  </div>
+  <div class="card" id="cardMount"><div class="loading">Loading…</div></div>
+</div>
+
+<script>
+(function(){
+  const SUPABASE_URL = 'https://foqrzkrmdwavpewjivex.supabase.co';
+  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZvcXJ6a3JtZHdhdnBld2ppdmV4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkwMzMzNTgsImV4cCI6MjEwNDYwOTM1OH0.VOMkTGoVjxieo-rWGTgAsbsDaA2SvJXkDrjuxc623QE';
+  const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const TIMEZONES = ['Australia/Perth','Australia/Darwin','Australia/Adelaide','Australia/Brisbane','Australia/Sydney','Australia/Melbourne','Australia/Hobart'];
+
+  const card = document.getElementById('cardMount');
+  let currentUser = null;
+
+  const state = {
+    orgId: null, orgName: '',
+    levels: [],                 // [{id, level_index, name}]
+    isApprovedForOrg: false,
+    positionNodeIds: {},        // levelId -> nodeId
+    positionNames: {},          // levelId -> name typed/selected
+    finalNodeId: null,          // the node they'll be attached to
+    finalNodeIsNew: false,
+    firstName: '', lastName: '',
+    existingMeeting: null       // from get_existing_meeting, if any
+  };
+
+  function toTitleCase(str){
+    return str.trim().replace(/\s+/g,' ').replace(/\w\S*/g, w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+  }
+
+  // ---------- bootstrap: confirm session, bail out to dashboard if a profile already exists ----------
+  async function boot(){
+    const { data: { user } } = await sb.auth.getUser();
+    if(!user){ window.location.href = 'index.html'; return; }
+    currentUser = user;
+
+    const { data: existingProfile } = await sb.from('profiles').select('id').eq('id', user.id).maybeSingle();
+    if(existingProfile){ window.location.href = 'dashboard.html'; return; }
+
+    renderOrgStep();
+  }
+
+  // ---------- generic type-ahead wiring ----------
+  function attachTypeahead(input, suggestBox, list, onPick){
+    function show(){
+      const q = input.value.trim().toLowerCase();
+      const matches = q ? list.filter(v=>v.toLowerCase().includes(q)) : list.slice(0,8);
+      suggestBox.innerHTML = matches.map(v=>`<div class="opt" data-v="${v}">${v}</div>`).join('');
+      suggestBox.style.display = matches.length ? 'block' : 'none';
+    }
+    input.addEventListener('focus', show);
+    input.addEventListener('input', show);
+    input.addEventListener('blur', ()=> setTimeout(()=> suggestBox.style.display='none', 150));
+    suggestBox.addEventListener('mousedown', e=>{
+      const opt = e.target.closest('.opt'); if(!opt) return;
+      input.value = opt.dataset.v;
+      suggestBox.style.display = 'none';
+      onPick(opt.dataset.v);
+    });
+  }
+
+  // ---------- Step 1: organisation (existing orgs only, no self-service creation) ----------
+  async function renderOrgStep(){
+    const { data: orgs, error } = await sb.from('organisations').select('id,name').order('name');
+    if(error){ card.innerHTML = `<div class="err">Couldn't load organisations: ${error.message}</div>`; return; }
+    const names = (orgs||[]).map(o=>o.name);
+
+    card.innerHTML = `
+      <div class="kicker">Step 1</div>
+      <h1 class="serif">Welcome — first, your organisation</h1>
+      <p class="sub">What organisation do you belong to? Start typing.</p>
+      <label>Organisation name</label>
+      <div class="field-wrap">
+        <input type="text" id="orgInput" placeholder="e.g. St John Ambulance Australia">
+        <div class="suggest" id="orgSuggest" style="display:none;"></div>
+      </div>
+      <div class="err" id="orgErr"></div>
+      <div class="cant-find">Can't find your organisation? Contact the Concurrence team to have it added.</div>
+      <div class="actions"><span></span><button class="btn" id="orgNext" disabled>Continue</button></div>
+    `;
+    const input = card.querySelector('#orgInput');
+    const suggest = card.querySelector('#orgSuggest');
+    const nextBtn = card.querySelector('#orgNext');
+    const err = card.querySelector('#orgErr');
+    let matchedOrg = null;
+
+    function checkMatch(){
+      const val = input.value.trim();
+      matchedOrg = (orgs||[]).find(o => o.name.toLowerCase() === val.toLowerCase()) || null;
+      nextBtn.disabled = !matchedOrg;
+      err.textContent = (val && !matchedOrg) ? 'No exact match — pick from the list.' : '';
+    }
+    attachTypeahead(input, suggest, names, ()=> checkMatch());
+    input.addEventListener('input', checkMatch);
+
+    nextBtn.onclick = async ()=>{
+      if(!matchedOrg) return;
+      state.orgId = matchedOrg.id;
+      state.orgName = matchedOrg.name;
+      nextBtn.disabled = true; nextBtn.textContent = 'Loading…';
+
+      const { data: levels } = await sb.from('hierarchy_levels').select('id,level_index,name').eq('org_id', state.orgId).order('level_index');
+      state.levels = levels || [];
+
+      const { data: approved } = await sb.rpc('am_i_approved_for_org', { check_org_id: state.orgId });
+      state.isApprovedForOrg = !!approved;
+
+      if(state.levels.length === 0){
+        if(state.isApprovedForOrg) renderHierarchyStep();
+        else renderBlocked("This organisation hasn't been set up yet. Ask a colleague with an approved organisational email to complete setup before you can continue.");
+      } else {
+        renderPositionStep(0);
+      }
+    };
+  }
+
+  // ---------- Step 2 (approved users, brand-new org only): define hierarchy levels ----------
+  function renderHierarchyStep(){
+    const levels = ['National','State','Region','Division']; // sensible default, editable
+    card.innerHTML = `
+      <div class="kicker">Step 2 · New organisation</div>
+      <h1 class="serif">How is ${state.orgName} structured?</h1>
+      <p class="sub">List the levels your organisation uses, largest to smallest.</p>
+      <div id="levelChips" style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:8px;"></div>
+      <div style="display:flex;gap:6px;">
+        <input type="text" id="levelInput" placeholder="Add a level…" style="flex:1;">
+        <button class="btn" id="levelAdd" style="padding:8px 14px;">Add</button>
+      </div>
+      <div class="err" id="hierErr"></div>
+      <div class="actions"><span></span><button class="btn" id="hierNext">Continue</button></div>
+    `;
+    let current = levels.slice();
+    function renderChips(){
+      card.querySelector('#levelChips').innerHTML = current.map((l,i)=>`<span style="background:var(--stone);border-radius:16px;padding:6px 12px;font-size:12.5px;">${l} <button data-i="${i}" style="background:none;border:none;color:var(--ink-soft);cursor:pointer;">&times;</button></span>`).join('');
+      card.querySelectorAll('#levelChips button').forEach(b=> b.onclick = ()=>{ current.splice(+b.dataset.i,1); renderChips(); });
+    }
+    renderChips();
+    card.querySelector('#levelAdd').onclick = ()=>{
+      const inp = card.querySelector('#levelInput');
+      const v = toTitleCase(inp.value); if(!v) return;
+      current.push(v); inp.value=''; renderChips();
+    };
+    card.querySelector('#hierNext').onclick = async ()=>{
+      if(current.length === 0){ card.querySelector('#hierErr').textContent = 'Add at least one level.'; return; }
+      const btn = card.querySelector('#hierNext'); btn.disabled = true; btn.textContent = 'Saving…';
+      const rows = current.map((name, i)=>({ org_id: state.orgId, level_index: i, name }));
+      const { data, error } = await sb.from('hierarchy_levels').insert(rows).select('id,level_index,name');
+      if(error){ card.querySelector('#hierErr').textContent = error.message; btn.disabled=false; btn.textContent='Continue'; return; }
+      state.levels = (data||[]).sort((a,b)=>a.level_index-b.level_index);
+      renderPositionStep(0);
+    };
+  }
+
+  // ---------- Step 3: position, one level at a time (so each level can be parent-scoped) ----------
+  async function renderPositionStep(levelIdx){
+    if(levelIdx >= state.levels.length){
+      const deepestLevel = state.levels[state.levels.length-1];
+      state.finalNodeId = state.positionNodeIds[deepestLevel.id];
+      renderNameStep();
+      return;
+    }
+    const level = state.levels[levelIdx];
+    const parentLevel = levelIdx > 0 ? state.levels[levelIdx-1] : null;
+    const parentNodeId = parentLevel ? state.positionNodeIds[parentLevel.id] : null;
+
+    let query = sb.from('hierarchy_nodes').select('id,name').eq('org_id', state.orgId).eq('level_id', level.id);
+    query = parentNodeId ? query.eq('parent_id', parentNodeId) : query.is('parent_id', null);
+    const { data: options } = await query.order('name');
+    const optionNames = (options||[]).map(o=>o.name);
+
+    card.innerHTML = `
+      <div class="kicker">${state.isApprovedForOrg ? 'Step 3' : 'Step 2'} · ${level.name} (${levelIdx+1} of ${state.levels.length})</div>
+      <h1 class="serif">Your ${level.name}</h1>
+      <p class="sub">Type to search what's already set up${state.isApprovedForOrg ? ', or enter something new' : ''}.</p>
+      <label>${level.name}</label>
+      <div class="field-wrap">
+        <input type="text" id="posInput" placeholder="Your ${level.name}'s name">
+        <div class="suggest" id="posSuggest" style="display:none;"></div>
+      </div>
+      <div id="posMsg"></div>
+      <div class="actions">
+        <button class="btn ghost" id="posBack">${levelIdx===0 ? 'Back' : 'Back'}</button>
+        <button class="btn" id="posNext" disabled>Continue</button>
+      </div>
+    `;
+    const input = card.querySelector('#posInput');
+    const suggest = card.querySelector('#posSuggest');
+    const nextBtn = card.querySelector('#posNext');
+    const msg = card.querySelector('#posMsg');
+    let matched = null;
+
+    function checkVal(){
+      const val = input.value.trim();
+      matched = (options||[]).find(o=>o.name.toLowerCase()===val.toLowerCase()) || null;
+      if(!val){ msg.innerHTML=''; nextBtn.disabled=true; return; }
+      if(matched){
+        msg.innerHTML = '';
+        nextBtn.disabled = false;
+      } else if(state.isApprovedForOrg){
+        msg.innerHTML = `<div class="hint">No existing match — this will create a new ${level.name.toLowerCase()}.</div>`;
+        nextBtn.disabled = false;
+      } else {
+        msg.innerHTML = `<div class="cant-find">Can't find your ${level.name.toLowerCase()}? Users with organisational emails can create one for you.</div>`;
+        nextBtn.disabled = true;
+      }
+    }
+    attachTypeahead(input, suggest, optionNames, ()=> checkVal());
+    input.addEventListener('input', checkVal);
+
+    card.querySelector('#posBack').onclick = ()=>{
+      if(levelIdx===0) renderOrgStep(); else renderPositionStep(levelIdx-1);
+    };
+    nextBtn.onclick = async ()=>{
+      const val = toTitleCase(input.value);
+      nextBtn.disabled = true; nextBtn.textContent = 'Saving…';
+      if(matched){
+        state.positionNodeIds[level.id] = matched.id;
+        state.positionNames[level.id] = matched.name;
+        renderPositionStep(levelIdx+1);
+      } else {
+        const { data, error } = await sb.from('hierarchy_nodes')
+          .insert({ org_id: state.orgId, level_id: level.id, parent_id: parentNodeId, name: val, created_by: currentUser.id })
+          .select('id,name').single();
+        if(error){ msg.innerHTML = `<div class="err">${error.message}</div>`; nextBtn.disabled=false; nextBtn.textContent='Continue'; return; }
+        state.positionNodeIds[level.id] = data.id;
+        state.positionNames[level.id] = data.name;
+        if(levelIdx === state.levels.length - 1) state.finalNodeIsNew = true;
+        renderPositionStep(levelIdx+1);
+      }
+    };
+  }
+
+  function renderBlocked(message){
+    card.innerHTML = `<div class="node-banner blocked">${message}</div>`;
+  }
+
+  // ---------- Step 4: name, then create the profile row ----------
+  function renderNameStep(){
+    card.innerHTML = `
+      <div class="kicker">Almost done</div>
+      <h1 class="serif">And you are?</h1>
+      <p class="sub">This is stored against your login email so other members can see who's who.</p>
+      <div class="row2">
+        <div><label>First name</label><input type="text" id="fname"></div>
+        <div><label>Last name</label><input type="text" id="lname"></div>
+      </div>
+      <div class="err" id="nameErr"></div>
+      <div class="actions"><span></span><button class="btn" id="nameNext" disabled>Continue</button></div>
+    `;
+    const f = card.querySelector('#fname'), l = card.querySelector('#lname'), nb = card.querySelector('#nameNext');
+    function check(){ nb.disabled = !(f.value.trim() && l.value.trim()); }
+    f.addEventListener('input', check); l.addEventListener('input', check);
+    f.addEventListener('blur', ()=>{ if(f.value.trim()) f.value = toTitleCase(f.value); });
+    l.addEventListener('blur', ()=>{ if(l.value.trim()) l.value = toTitleCase(l.value); });
+
+    nb.onclick = async ()=>{
+      state.firstName = toTitleCase(f.value);
+      state.lastName = toTitleCase(l.value);
+      nb.disabled = true; nb.textContent = 'Saving…';
+      const { error } = await sb.from('profiles').insert({
+        id: currentUser.id, org_id: state.orgId, node_id: state.finalNodeId,
+        email: currentUser.email, first_name: state.firstName, last_name: state.lastName
+      });
+      if(error){ card.querySelector('#nameErr').textContent = error.message; nb.disabled=false; nb.textContent='Continue'; return; }
+      renderMeetingStep();
+    };
+  }
+
+  // ---------- Step 5: meeting — set up (new node) or confirm (existing) ----------
+  async function renderMeetingStep(){
+    if(!state.finalNodeIsNew){
+      const { data } = await sb.rpc('get_existing_meeting', { check_node_id: state.finalNodeId });
+      state.existingMeeting = (data && data[0]) ? data[0] : null;
+    }
+
+    if(state.existingMeeting){
+      const m = state.existingMeeting;
+      card.innerHTML = `
+        <div class="kicker">Last step</div>
+        <h1 class="serif">Your group's meeting</h1>
+        <div class="node-banner existing">This group's meeting is already set up. Here are the details.</div>
+        <p class="sub"><b>${m.frequency}</b>, ${DAYS[m.day_of_week]}s, ${m.start_time}–${m.end_time} (${m.timezone})<br>${m.address || 'No address on file'}${m.video_url ? '<br>Video link on file' : ''}</p>
+        <p class="hint">Only members with an approved organisational email can edit meeting details — from the dashboard, once you're in.</p>
+        <div class="actions"><span></span><button class="btn" id="mNext">Continue to dashboard</button></div>
+      `;
+      card.querySelector('#mNext').onclick = renderDoneStep;
+      return;
+    }
+
+    if(!state.finalNodeIsNew && !state.existingMeeting){
+      // existing node, but nobody's set up its meeting yet
+      if(!state.isApprovedForOrg){
+        renderBlocked("This group doesn't have its meeting details set up yet. Ask a colleague with an approved organisational email to add them.");
+        return;
+      }
+      // approved user filling in a gap left by whoever created the node
+    }
+
+    card.innerHTML = `
+      <div class="kicker">Last step</div>
+      <h1 class="serif">Set up your group's meeting</h1>
+      <div class="node-banner new">You're the first person here — these details will show as the default for everyone else who joins.</div>
+      <label>Meeting location</label>
+      <input type="text" id="mAddress" placeholder="Venue name and address">
+      <div class="row2">
+        <div><label>Frequency</label><select id="mFreq"><option>Weekly</option><option>Fortnightly</option><option>Monthly</option></select></div>
+        <div><label>Day</label><select id="mDay">${DAYS.map((d,i)=>`<option value="${i}" ${d==='Wednesday'?'selected':''}>${d}</option>`).join('')}</select></div>
+      </div>
+      <div class="row2">
+        <div><label>Start time</label><input type="time" id="mStart" value="19:00"></div>
+        <div><label>Finish time</label><input type="time" id="mEnd" value="20:30"></div>
+      </div>
+      <label>Timezone</label>
+      <select id="mTz">${TIMEZONES.map(t=>`<option ${t==='Australia/Melbourne'?'selected':''}>${t}</option>`).join('')}</select>
+      <label style="display:flex;align-items:center;gap:7px;margin-top:14px;"><input type="checkbox" id="mInPerson" checked style="width:auto;"> In person</label>
+      <label>Video link (leave blank if not online)</label>
+      <input type="text" id="mVideo" placeholder="https://…">
+      <div class="err" id="meetErr"></div>
+      <div class="actions"><span></span><button class="btn" id="mNext">Save &amp; continue</button></div>
+    `;
+    card.querySelector('#mNext').onclick = async ()=>{
+      const btn = card.querySelector('#mNext'); btn.disabled = true; btn.textContent = 'Saving…';
+      const { error } = await sb.from('meetings').insert({
+        node_id: state.finalNodeId,
+        frequency: card.querySelector('#mFreq').value,
+        day_of_week: Number(card.querySelector('#mDay').value),
+        start_time: card.querySelector('#mStart').value,
+        end_time: card.querySelector('#mEnd').value,
+        timezone: card.querySelector('#mTz').value,
+        address: card.querySelector('#mAddress').value.trim(),
+        in_person: card.querySelector('#mInPerson').checked,
+        video_url: card.querySelector('#mVideo').value.trim() || null,
+        edited_by: currentUser.id
+      });
+      if(error){ card.querySelector('#meetErr').textContent = error.message; btn.disabled=false; btn.textContent='Save & continue'; return; }
+      renderDoneStep();
+    };
+  }
+
+  function renderDoneStep(){
+    const path = state.levels.map(l => state.positionNames[l.id]).join(' → ');
+    card.innerHTML = `
+      <div class="center">
+        <div class="done-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></div>
+        <h1 class="serif">You're all set, ${state.firstName}</h1>
+        <p class="sub">${path}</p>
+        <button class="btn" id="toDash" style="width:100%;">Continue to dashboard</button>
+      </div>
+    `;
+    card.querySelector('#toDash').onclick = ()=>{ window.location.href = 'dashboard.html'; };
+  }
+
+  boot();
+})();
+</script>
+</body>
+</html>
