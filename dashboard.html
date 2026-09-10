@@ -100,13 +100,14 @@
       if(profErr){ throw profErr; }
       if(!profile){ window.location.href = 'onboarding.html'; return; }
 
-      const [{ data: org }, nodePath] = await Promise.all([
+      const [{ data: org }, nodePath, { data: isApproved }] = await Promise.all([
         sb.from('organisations').select('name').eq('id', profile.org_id).maybeSingle(),
-        buildNodePath(profile.node_id)
+        buildNodePath(profile.node_id),
+        sb.rpc('current_user_is_approved')
       ]);
 
       renderSidebar(org ? org.name : '', nodePath, profile);
-      await renderMyMeeting(profile, nodePath);
+      await renderMyMeeting(profile, nodePath, !!isApproved);
     } catch(err){
       console.error('Dashboard failed to load:', err);
       const msg = (err && err.message) ? err.message : String(err);
@@ -192,7 +193,106 @@
     return 'data:text/calendar;charset=utf8,' + encodeURIComponent(lines);
   }
 
-  async function renderMyMeeting(profile, nodePath){
+  const DAYS_FULL = DAYS;
+  const TIMEZONES = ['Australia/Perth','Australia/Darwin','Australia/Adelaide','Australia/Brisbane','Australia/Sydney','Australia/Melbourne','Australia/Hobart'];
+  const MOCK_PLACES = [
+    'Box Hill Community Centre, 1010 Whitehorse Rd, Box Hill VIC 3128',
+    'Ballarat Central Neighbourhood House, 12 Sturt St, Ballarat VIC 3350',
+    'Bendigo Senior Citizens Centre, 4 Short St, Bendigo VIC 3550',
+    'Toowoomba Uniting Church Hall, 88 Margaret St, Toowoomba QLD 4350',
+    'Stirling Community Centre, 60 Mount Barker Rd, Stirling SA 5152',
+    'Nambour Civic Centre, 24 Bury St, Nambour QLD 4560',
+    'Fremantle Town Hall, 8 William St, Fremantle WA 6160'
+  ];
+  function openMapPicker(targetInput){
+    const back = document.createElement('div');
+    back.style.cssText = 'position:fixed;inset:0;background:rgba(20,20,18,0.45);display:flex;align-items:center;justify-content:center;z-index:60;padding:16px;';
+    back.innerHTML = `
+      <div style="background:#fff;border-radius:8px;padding:22px 24px;max-width:420px;width:100%;max-height:86vh;overflow:auto;">
+        <h3 class="serif" style="margin:0 0 4px;font-size:16px;">Search for your meeting location</h3>
+        <p style="font-size:12px;color:var(--ink-soft);margin:0 0 14px;">Find your venue and we'll drop it into the address field.</p>
+        <input type="text" id="mapSearchInput" placeholder="Search an address or venue name…" style="width:100%;padding:9px 10px;border:1px solid var(--stone-line);border-radius:5px;font-family:inherit;font-size:13px;margin-bottom:12px;">
+        <div id="mapResults"></div>
+        <p style="font-size:11px;color:var(--ink-soft);margin-top:12px;line-height:1.5;">Placeholder search — will use the real Google Places picker once an API key is wired up.</p>
+        <div style="display:flex;justify-content:flex-end;margin-top:10px;"><button class="btn ghost" id="mapCancel" style="border:1px solid var(--stone-line);color:var(--ink);">Cancel</button></div>
+      </div>`;
+    document.body.appendChild(back);
+    back.addEventListener('click', e=>{ if(e.target===back) back.remove(); });
+    back.querySelector('#mapCancel').onclick = ()=> back.remove();
+    const searchInput = back.querySelector('#mapSearchInput');
+    const results = back.querySelector('#mapResults');
+    function renderResults(){
+      const q = searchInput.value.trim().toLowerCase();
+      const matches = (q ? MOCK_PLACES.filter(p=>p.toLowerCase().includes(q)) : MOCK_PLACES).slice(0,6);
+      results.innerHTML = matches.length
+        ? matches.map(p=>`<div class="opt" data-p="${esc(p)}" style="padding:9px 4px;border-top:1px solid var(--stone-line);font-size:13px;cursor:pointer;">${esc(p)}</div>`).join('')
+        : `<div style="padding:9px 4px;color:var(--ink-soft);font-size:13px;">No sample venues match — try a broader search.</div>`;
+      results.querySelectorAll('.opt').forEach(o=>{ o.onclick = ()=>{ targetInput.value = o.dataset.p; back.remove(); }; });
+    }
+    searchInput.addEventListener('input', renderResults);
+    renderResults();
+    searchInput.focus();
+  }
+
+  function openEditMeetingModal(nodeId, orgLabel, meeting, onSaved){
+    const back = document.createElement('div');
+    back.style.cssText = 'position:fixed;inset:0;background:rgba(20,20,18,0.45);display:flex;align-items:center;justify-content:center;z-index:60;padding:16px;';
+    back.innerHTML = `
+      <div style="background:#fff;border-radius:8px;padding:22px 24px;max-width:420px;width:100%;max-height:86vh;overflow:auto;">
+        <h3 class="serif" style="margin:0 0 14px;font-size:16px;">Edit ${esc(orgLabel)}'s meeting</h3>
+        <label style="display:block;font-size:11.5px;color:var(--ink-soft);margin-bottom:5px;">Meeting location</label>
+        <div style="display:flex;gap:8px;margin-bottom:12px;">
+          <input type="text" id="eAddress" value="${esc(meeting.address||'')}" style="flex:1;padding:9px 10px;border:1px solid var(--stone-line);border-radius:5px;font-family:inherit;font-size:13px;">
+          <button type="button" id="eMapBtn" style="flex:none;background:var(--stone);border:1px solid var(--stone-line);border-radius:5px;padding:0 12px;font-size:12px;font-weight:600;">Search map</button>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
+          <div><label style="display:block;font-size:11.5px;color:var(--ink-soft);margin-bottom:5px;">Frequency</label>
+            <select id="eFreq" style="width:100%;padding:9px 10px;border:1px solid var(--stone-line);border-radius:5px;font-family:inherit;font-size:13px;">
+              ${['Weekly','Fortnightly','Monthly'].map(f=>`<option ${f===meeting.frequency?'selected':''}>${f}</option>`).join('')}
+            </select></div>
+          <div><label style="display:block;font-size:11.5px;color:var(--ink-soft);margin-bottom:5px;">Day</label>
+            <select id="eDay" style="width:100%;padding:9px 10px;border:1px solid var(--stone-line);border-radius:5px;font-family:inherit;font-size:13px;">
+              ${DAYS_FULL.map((d,i)=>`<option value="${i}" ${i===meeting.day_of_week?'selected':''}>${d}</option>`).join('')}
+            </select></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
+          <div><label style="display:block;font-size:11.5px;color:var(--ink-soft);margin-bottom:5px;">Start time</label>
+            <input type="time" id="eStart" value="${esc(meeting.start_time.slice(0,5))}" style="width:100%;padding:9px 10px;border:1px solid var(--stone-line);border-radius:5px;font-family:inherit;font-size:13px;"></div>
+          <div><label style="display:block;font-size:11.5px;color:var(--ink-soft);margin-bottom:5px;">Finish time</label>
+            <input type="time" id="eEnd" value="${esc(meeting.end_time.slice(0,5))}" style="width:100%;padding:9px 10px;border:1px solid var(--stone-line);border-radius:5px;font-family:inherit;font-size:13px;"></div>
+        </div>
+        <label style="display:block;font-size:11.5px;color:var(--ink-soft);margin-bottom:5px;">Timezone</label>
+        <select id="eTz" style="width:100%;padding:9px 10px;border:1px solid var(--stone-line);border-radius:5px;font-family:inherit;font-size:13px;margin-bottom:6px;">
+          ${TIMEZONES.map(t=>`<option ${t===meeting.timezone?'selected':''}>${t}</option>`).join('')}
+        </select>
+        <div id="eErr" style="font-size:11.5px;color:var(--ember);min-height:14px;margin-top:6px;"></div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px;">
+          <button class="btn ghost" id="eCancel" style="border:1px solid var(--stone-line);color:var(--ink);">Cancel</button>
+          <button class="btn brass" id="eSave">Save</button>
+        </div>
+      </div>`;
+    document.body.appendChild(back);
+    back.addEventListener('click', e=>{ if(e.target===back) back.remove(); });
+    back.querySelector('#eCancel').onclick = ()=> back.remove();
+    back.querySelector('#eMapBtn').onclick = ()=> openMapPicker(back.querySelector('#eAddress'));
+    back.querySelector('#eSave').onclick = async ()=>{
+      const btn = back.querySelector('#eSave'); btn.disabled = true; btn.textContent = 'Saving…';
+      const { error } = await sb.from('meetings').update({
+        frequency: back.querySelector('#eFreq').value,
+        day_of_week: Number(back.querySelector('#eDay').value),
+        start_time: back.querySelector('#eStart').value,
+        end_time: back.querySelector('#eEnd').value,
+        timezone: back.querySelector('#eTz').value,
+        address: back.querySelector('#eAddress').value.trim()
+        // edited_by / edited_at are set server-side by a trigger — not sent from the client.
+      }).eq('node_id', nodeId);
+      if(error){ back.querySelector('#eErr').textContent = error.message; btn.disabled=false; btn.textContent='Save'; return; }
+      back.remove();
+      onSaved();
+    };
+  }
+
+  async function renderMyMeeting(profile, nodePath, isApproved){
     const deepest = nodePath.length ? nodePath[nodePath.length-1] : null;
     const orgLabel = deepest ? deepest.name : 'your group';
 
@@ -214,7 +314,7 @@
 
     const { data: meeting, error } = await sb
       .from('meetings')
-      .select('frequency, day_of_week, start_time, end_time, timezone, address')
+      .select('frequency, day_of_week, start_time, end_time, timezone, address, edited_by, edited_at')
       .eq('node_id', deepest.id)
       .maybeSingle();
 
@@ -227,6 +327,13 @@
     const summary = `${orgLabel} meeting`;
     const href = icsHref(summary, meeting.address || '', start.toUTC(), end.toUTC());
 
+    let editorLine = '';
+    if(meeting.edited_by){
+      const { data: editor } = await sb.from('profiles').select('first_name,last_name').eq('id', meeting.edited_by).maybeSingle();
+      const editedDate = DateTime.fromISO(meeting.edited_at).toFormat('d LLL yyyy, h:mma');
+      editorLine = `<div style="font-size:11px;color:var(--ink-soft);margin-top:10px;">Last edited by ${editor ? esc(editor.first_name+' '+editor.last_name) : 'unknown'} on ${editedDate}</div>`;
+    }
+
     mount.innerHTML = `
       <div class="next-card">
         <div>
@@ -235,11 +342,19 @@
           <div class="when serif">${esc(whenLabel)}</div>
           <div class="where">${esc(meeting.address || 'No address on file')} · ${esc(meeting.frequency)}</div>
         </div>
-        <div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
           <a class="btn brass" href="${href}" download="${summary.replace(/[^a-z0-9]+/gi,'-')}.ics">Add to calendar</a>
+          ${isApproved ? '<button class="btn ghost" id="editMeetingBtn">Edit</button>' : ''}
         </div>
       </div>
+      ${editorLine}
     `;
+
+    if(isApproved){
+      document.getElementById('editMeetingBtn').onclick = ()=>{
+        openEditMeetingModal(deepest.id, orgLabel, meeting, ()=> renderMyMeeting(profile, nodePath, isApproved));
+      };
+    }
   }
 
   boot();
