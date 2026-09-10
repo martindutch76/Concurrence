@@ -367,7 +367,7 @@
         <div class="kicker">Last step</div>
         <h1 class="serif">Your group's meeting</h1>
         <div class="node-banner existing">This group's meeting is already set up. Here are the details.</div>
-        <p class="sub"><b>${m.frequency}</b>, ${DAYS[m.day_of_week]}s, ${m.start_time}–${m.end_time} (${m.timezone})<br>${m.address || 'No address on file'}${m.video_url ? '<br>Video link on file' : ''}</p>
+        <p class="sub"><b>${m.frequency}</b>, ${DAYS[m.day_of_week]}s, ${m.start_time}–${m.end_time} (${m.timezone})<br>${m.address || 'No address on file'}</p>
         <p class="hint">Only members with an approved organisational email can edit meeting details — from the dashboard, once you're in.</p>
         <div class="actions"><span></span><button class="btn" id="mNext">Continue to dashboard</button></div>
       `;
@@ -387,9 +387,12 @@
     card.innerHTML = `
       <div class="kicker">Last step</div>
       <h1 class="serif">Set up your group's meeting</h1>
-      <div class="node-banner new">You're the first person here — these details will show as the default for everyone else who joins.</div>
+      <div class="node-banner new">You're the first person here — these details will show as the default for everyone else who joins. All groups meet in person at a regular venue by default; video links and one-off online options are set per session, on the dashboard.</div>
       <label>Meeting location</label>
-      <input type="text" id="mAddress" placeholder="Venue name and address">
+      <div class="addr-row" style="display:flex;gap:8px;">
+        <input type="text" id="mAddress" placeholder="Venue name and address" style="flex:1;">
+        <button type="button" class="btn ghost" id="mapBtn" style="border:1px solid var(--stone-line);padding:0 12px;white-space:nowrap;">Search map</button>
+      </div>
       <div class="row2">
         <div><label>Frequency</label><select id="mFreq"><option>Weekly</option><option>Fortnightly</option><option>Monthly</option></select></div>
         <div><label>Day</label><select id="mDay">${DAYS.map((d,i)=>`<option value="${i}" ${d==='Wednesday'?'selected':''}>${d}</option>`).join('')}</select></div>
@@ -400,12 +403,10 @@
       </div>
       <label>Timezone</label>
       <select id="mTz">${TIMEZONES.map(t=>`<option ${t==='Australia/Melbourne'?'selected':''}>${t}</option>`).join('')}</select>
-      <label style="display:flex;align-items:center;gap:7px;margin-top:14px;"><input type="checkbox" id="mInPerson" checked style="width:auto;"> In person</label>
-      <label>Video link (leave blank if not online)</label>
-      <input type="text" id="mVideo" placeholder="https://…">
       <div class="err" id="meetErr"></div>
       <div class="actions"><span></span><button class="btn" id="mNext">Save &amp; continue</button></div>
     `;
+    card.querySelector('#mapBtn').onclick = ()=> openMapPicker(card.querySelector('#mAddress'));
     card.querySelector('#mNext').onclick = async ()=>{
       const btn = card.querySelector('#mNext'); btn.disabled = true; btn.textContent = 'Saving…';
       const { error } = await sb.from('meetings').insert({
@@ -416,13 +417,54 @@
         end_time: card.querySelector('#mEnd').value,
         timezone: card.querySelector('#mTz').value,
         address: card.querySelector('#mAddress').value.trim(),
-        in_person: card.querySelector('#mInPerson').checked,
-        video_url: card.querySelector('#mVideo').value.trim() || null,
         edited_by: currentUser.id
       });
       if(error){ card.querySelector('#meetErr').textContent = error.message; btn.disabled=false; btn.textContent='Save & continue'; return; }
       renderDoneStep();
     };
+  }
+
+  // Simulated map picker — this sandbox can't call the real Google Places
+  // API (no key wired up), so it searches a small sample list instead.
+  // Swap this for the real Places Autocomplete widget once you have an
+  // API key from Google Cloud Console; the rest of the form doesn't change.
+  const MOCK_PLACES = [
+    'Box Hill Community Centre, 1010 Whitehorse Rd, Box Hill VIC 3128',
+    'Ballarat Central Neighbourhood House, 12 Sturt St, Ballarat VIC 3350',
+    'Bendigo Senior Citizens Centre, 4 Short St, Bendigo VIC 3550',
+    'Toowoomba Uniting Church Hall, 88 Margaret St, Toowoomba QLD 4350',
+    'Stirling Community Centre, 60 Mount Barker Rd, Stirling SA 5152',
+    'Nambour Civic Centre, 24 Bury St, Nambour QLD 4560',
+    'Fremantle Town Hall, 8 William St, Fremantle WA 6160'
+  ];
+  function openMapPicker(targetInput){
+    const back = document.createElement('div');
+    back.style.cssText = 'position:fixed;inset:0;background:rgba(20,20,18,0.45);display:flex;align-items:center;justify-content:center;z-index:60;padding:16px;';
+    back.innerHTML = `
+      <div style="background:#fff;border-radius:8px;padding:22px 24px;max-width:420px;width:100%;max-height:86vh;overflow:auto;">
+        <h3 class="serif" style="margin:0 0 4px;font-size:16px;">Search for your meeting location</h3>
+        <p style="font-size:12px;color:var(--ink-soft);margin:0 0 14px;">Find your venue and we'll drop it into the address field.</p>
+        <input type="text" id="mapSearchInput" placeholder="Search an address or venue name…" style="width:100%;padding:9px 10px;border:1px solid var(--stone-line);border-radius:5px;font-family:inherit;font-size:13px;margin-bottom:12px;">
+        <div id="mapResults"></div>
+        <p style="font-size:11px;color:var(--ink-soft);margin-top:12px;line-height:1.5;">Placeholder search — this will use the real Google Places picker once an API key is wired up.</p>
+        <div style="display:flex;justify-content:flex-end;margin-top:10px;"><button class="btn ghost" id="mapCancel">Cancel</button></div>
+      </div>`;
+    document.body.appendChild(back);
+    back.addEventListener('click', e=>{ if(e.target===back) back.remove(); });
+    back.querySelector('#mapCancel').onclick = ()=> back.remove();
+    const searchInput = back.querySelector('#mapSearchInput');
+    const results = back.querySelector('#mapResults');
+    function renderResults(){
+      const q = searchInput.value.trim().toLowerCase();
+      const matches = (q ? MOCK_PLACES.filter(p=>p.toLowerCase().includes(q)) : MOCK_PLACES).slice(0,6);
+      results.innerHTML = matches.length
+        ? matches.map(p=>`<div class="opt" data-p="${p.replace(/"/g,'&quot;')}" style="padding:9px 4px;border-top:1px solid var(--stone-line);font-size:13px;cursor:pointer;">${p}</div>`).join('')
+        : `<div style="padding:9px 4px;color:var(--ink-soft);font-size:13px;">No sample venues match — try a broader search.</div>`;
+      results.querySelectorAll('.opt').forEach(o=>{ o.onclick = ()=>{ targetInput.value = o.dataset.p; back.remove(); }; });
+    }
+    searchInput.addEventListener('input', renderResults);
+    renderResults();
+    searchInput.focus();
   }
 
   function renderDoneStep(){

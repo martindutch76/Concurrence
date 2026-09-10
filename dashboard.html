@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Concurrence — Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/luxon@3/build/global/luxon.min.js"></script>
+<style>
+  :root{
+    --night:#14262B; --night-deep:#0D1A1D;
+    --brass:#C99A3E; --brass-soft:#E3C077;
+    --ember:#B65C38; --stone:#EDE6D6; --stone-line:#D9CFB7;
+    --ink:#1B2422; --ink-soft:#5B655F; --card:#FFFFFF;
+  }
+  *{ box-sizing:border-box; }
+  body{ margin:0; background:var(--stone); color:var(--ink); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; font-size:13.5px; }
+  .serif{ font-family:"New York",ui-serif,Georgia,"Times New Roman",serif; }
+  a{ color:inherit; }
+  button{ font-family:inherit; cursor:pointer; }
+
+  .shell{ display:grid; grid-template-columns:216px 1fr; min-height:100vh; }
+  .side{ background:var(--night); color:var(--stone); padding:22px 16px; display:flex; flex-direction:column; }
+  .side-brand{ display:flex; align-items:center; gap:9px; margin-bottom:22px; padding:0 4px; }
+  .side-brand svg{ width:24px; height:24px; }
+  .side-brand span{ font-size:16px; font-weight:500; color:#fff; }
+  .org-path{ font-size:11px; color:#9FADA7; line-height:1.5; margin-bottom:20px; padding:0 4px; }
+  .org-name{ font-size:14px; font-weight:600; color:#fff; margin-bottom:6px; }
+  .org-path b{ color:var(--brass-soft); font-weight:500; }
+  .side-foot{ font-size:11px; color:#7C8985; padding:0 4px; margin-top:auto; }
+  .signout-link{ font-size:11px; color:#9FADA7; text-decoration:none; cursor:pointer; display:block; margin-top:8px; }
+  .signout-link:hover{ color:#fff; }
+
+  .main{ padding:26px 34px 60px; max-width:900px; }
+  .topline{ display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:22px; }
+  .topline h1{ font-size:24px; margin:0 0 2px; font-weight:500; }
+  .topline .sub{ font-size:13px; color:var(--ink-soft); }
+  .avatar{ width:34px; height:34px; border-radius:50%; background:var(--brass); color:var(--night-deep); display:flex; align-items:center; justify-content:center; font-weight:600; font-size:13px; flex:none; }
+
+  .next-card{ background:var(--night); color:#fff; border-radius:6px; padding:24px 26px; display:flex; justify-content:space-between; align-items:center; gap:20px; flex-wrap:wrap; }
+  .next-card .unit-title{ font-size:22px; font-weight:500; color:#fff; margin-bottom:10px; }
+  .next-card .lbl{ font-size:11.5px; color:#9FADA7; margin-bottom:6px; }
+  .next-card .when{ font-size:28px; font-weight:500; }
+  .next-card .where{ font-size:13px; color:#C9CFC9; margin-top:4px; }
+  .btn{ background:var(--night); color:#fff; border:none; padding:8px 14px; border-radius:4px; font-size:12.5px; font-weight:600; }
+  .btn.brass{ background:var(--brass); color:var(--night-deep); }
+  .btn.ghost{ background:transparent; border:1px solid rgba(255,255,255,0.35); color:#fff; }
+
+  .loading, .err, .empty{ padding:30px; text-align:center; color:var(--ink-soft); font-size:13px; }
+  .err{ color:var(--ember); }
+</style>
+</head>
+<body>
+  <div class="shell">
+    <div class="side" id="sideMount">
+      <div class="side-brand">
+        <svg viewBox="0 0 120 120">
+          <path d="M 107.55 75.45 Q 85.02 75.63 68.56 62.78" stroke="#E3C077" stroke-width="1.4" stroke-linecap="round" fill="none" opacity="0.55"/>
+          <path d="M 66.12 103.57 Q 68.19 85.20 61.25 68.91" stroke="#E3C077" stroke-width="2.2" stroke-linecap="round" fill="none" opacity="0.8"/>
+          <path d="M 27.37 101.76 Q 34.92 78.22 54.46 67.09" stroke="#E3C077" stroke-width="1.1" stroke-linecap="round" fill="none" opacity="0.4"/>
+          <path d="M 13.06 57.54 Q 32.11 62.44 51.01 59.53" stroke="#E3C077" stroke-width="3.0" stroke-linecap="round" fill="none" opacity="1.0"/>
+          <path d="M 30.32 12.51 Q 48.88 29.46 55.23 52.37" stroke="#E3C077" stroke-width="1.6" stroke-linecap="round" fill="none" opacity="0.6"/>
+          <path d="M 81.13 20.27 Q 67.44 34.05 64.23 52.05" stroke="#E3C077" stroke-width="2.4" stroke-linecap="round" fill="none" opacity="0.85"/>
+          <circle cx="60" cy="60" r="7" fill="#C99A3E"/>
+        </svg>
+        <span class="serif">Concurrence</span>
+      </div>
+      <div class="loading" style="color:#9FADA7;">Loading…</div>
+    </div>
+    <div class="main" id="mainMount">
+      <div class="loading">Loading your dashboard…</div>
+    </div>
+  </div>
+
+<script>
+(function(){
+  const SUPABASE_URL = 'https://foqrzkrmdwavpewjivex.supabase.co';
+  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZvcXJ6a3JtZHdhdnBld2ppdmV4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkwMzMzNTgsImV4cCI6MjEwNDYwOTM1OH0.VOMkTGoVjxieo-rWGTgAsbsDaA2SvJXkDrjuxc623QE';
+  const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  const { DateTime } = window.luxon;
+
+  const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const mainMount = document.getElementById('mainMount');
+  const sideMount = document.getElementById('sideMount');
+
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+  // ---------- boot ----------
+  async function boot(){
+    const { data: { user } } = await sb.auth.getUser();
+    if(!user){ window.location.href = 'index.html'; return; }
+
+    const { data: profile, error: profErr } = await sb
+      .from('profiles')
+      .select('id, first_name, last_name, org_id, node_id')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    if(profErr){ mainMount.innerHTML = `<div class="err">Couldn't load your profile: ${esc(profErr.message)}</div>`; return; }
+    if(!profile){ window.location.href = 'onboarding.html'; return; }
+
+    const [{ data: org }, { data: nodePath }] = await Promise.all([
+      sb.from('organisations').select('name').eq('id', profile.org_id).maybeSingle(),
+      buildNodePath(profile.node_id)
+    ]);
+
+    renderSidebar(org ? org.name : '', nodePath, profile);
+    await renderMyMeeting(profile, nodePath);
+  }
+
+  // Walks parent_id up from the user's node to the root, returning an
+  // ordered array [national, state, region, division] for the breadcrumb.
+  async function buildNodePath(nodeId){
+    const path = [];
+    let currentId = nodeId;
+    let guard = 0;
+    while(currentId && guard < 10){
+      guard++;
+      const { data: node } = await sb.from('hierarchy_nodes').select('id,name,parent_id').eq('id', currentId).maybeSingle();
+      if(!node) break;
+      path.unshift(node);
+      currentId = node.parent_id;
+    }
+    return path;
+  }
+
+  function renderSidebar(orgName, nodePath, profile){
+    const deepest = nodePath.length ? nodePath[nodePath.length-1].name : '';
+    const ancestors = nodePath.slice(0, -1).map(n=>n.name).join(' · ');
+    sideMount.innerHTML = `
+      <div class="side-brand">
+        <svg viewBox="0 0 120 120">
+          <path d="M 107.55 75.45 Q 85.02 75.63 68.56 62.78" stroke="#E3C077" stroke-width="1.4" stroke-linecap="round" fill="none" opacity="0.55"/>
+          <path d="M 66.12 103.57 Q 68.19 85.20 61.25 68.91" stroke="#E3C077" stroke-width="2.2" stroke-linecap="round" fill="none" opacity="0.8"/>
+          <path d="M 27.37 101.76 Q 34.92 78.22 54.46 67.09" stroke="#E3C077" stroke-width="1.1" stroke-linecap="round" fill="none" opacity="0.4"/>
+          <path d="M 13.06 57.54 Q 32.11 62.44 51.01 59.53" stroke="#E3C077" stroke-width="3.0" stroke-linecap="round" fill="none" opacity="1.0"/>
+          <path d="M 30.32 12.51 Q 48.88 29.46 55.23 52.37" stroke="#E3C077" stroke-width="1.6" stroke-linecap="round" fill="none" opacity="0.6"/>
+          <path d="M 81.13 20.27 Q 67.44 34.05 64.23 52.05" stroke="#E3C077" stroke-width="2.4" stroke-linecap="round" fill="none" opacity="0.85"/>
+          <circle cx="60" cy="60" r="7" fill="#C99A3E"/>
+        </svg>
+        <span class="serif">Concurrence</span>
+      </div>
+      <div class="org-path">
+        <div class="org-name">${esc(orgName)}</div>
+        You're signed in at<br><b>${esc(deepest)}</b><br>${esc(ancestors)}
+      </div>
+      <div class="side-foot">
+        Signed in as ${esc(profile.first_name)} ${esc(profile.last_name)}
+        <a class="signout-link" id="signOutLink">Sign out</a>
+      </div>
+    `;
+    document.getElementById('signOutLink').onclick = async ()=>{
+      await sb.auth.signOut();
+      window.location.href = 'index.html';
+    };
+  }
+
+  // Finds the next date/time this recurring meeting falls on, in its own
+  // timezone, correctly accounting for daylight saving via Luxon (no
+  // hand-maintained offsets, no manual DST toggle to forget).
+  function nextOccurrence(dayOfWeek, startTime, endTime, timezone){
+    const targetIsoWeekday = dayOfWeek === 0 ? 7 : dayOfWeek; // Luxon: Mon=1..Sun=7
+    const [sh, sm] = startTime.split(':').map(Number);
+    const [eh, em] = endTime.split(':').map(Number);
+    const now = DateTime.now().setZone(timezone);
+    let candidate = now.set({ hour: sh, minute: sm, second: 0, millisecond: 0 });
+    while(candidate.weekday !== targetIsoWeekday || candidate < now){
+      candidate = candidate.plus({ days: 1 }).set({ hour: sh, minute: sm, second: 0, millisecond: 0 });
+    }
+    const end = candidate.set({ hour: eh, minute: em });
+    return { start: candidate, end };
+  }
+
+  function icsHref(summary, location, dtStartUTC, dtEndUTC){
+    const fmt = "yyyyMMdd'T'HHmmss'Z'";
+    const lines = [
+      'BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Concurrence//EN','BEGIN:VEVENT',
+      `UID:${crypto.randomUUID()}@concurrence.app`,
+      `DTSTART:${dtStartUTC.toFormat(fmt)}`,
+      `DTEND:${dtEndUTC.toFormat(fmt)}`,
+      `SUMMARY:${summary}`,
+      `LOCATION:${location}`,
+      'END:VEVENT','END:VCALENDAR'
+    ].join('\r\n');
+    return 'data:text/calendar;charset=utf8,' + encodeURIComponent(lines);
+  }
+
+  async function renderMyMeeting(profile, nodePath){
+    const deepest = nodePath.length ? nodePath[nodePath.length-1] : null;
+    const orgLabel = deepest ? deepest.name : 'your group';
+
+    mainMount.innerHTML = `
+      <div class="topline">
+        <div>
+          <h1 class="serif">Good day, ${esc(profile.first_name)}</h1>
+          <div class="sub">${esc(orgLabel)}</div>
+        </div>
+        <div class="avatar">${esc((profile.first_name||' ')[0])}${esc((profile.last_name||' ')[0])}</div>
+      </div>
+      <div id="meetingCardMount"><div class="loading">Loading your meeting…</div></div>
+    `;
+
+    if(!deepest){
+      document.getElementById('meetingCardMount').innerHTML = `<div class="empty">No group on file for your account yet.</div>`;
+      return;
+    }
+
+    const { data: meeting, error } = await sb
+      .from('meetings_public')
+      .select('frequency, day_of_week, start_time, end_time, timezone, address')
+      .eq('node_id', deepest.id)
+      .maybeSingle();
+
+    const mount = document.getElementById('meetingCardMount');
+    if(error){ mount.innerHTML = `<div class="err">Couldn't load your meeting: ${esc(error.message)}</div>`; return; }
+    if(!meeting){ mount.innerHTML = `<div class="empty">No meeting has been set up for ${esc(orgLabel)} yet.</div>`; return; }
+
+    const { start, end } = nextOccurrence(meeting.day_of_week, meeting.start_time, meeting.end_time, meeting.timezone);
+    const whenLabel = start.toFormat('ccc d LLL · h:mma').toLowerCase().replace(/^\w/, c=>c.toUpperCase());
+    const summary = `${orgLabel} meeting`;
+    const href = icsHref(summary, meeting.address || '', start.toUTC(), end.toUTC());
+
+    mount.innerHTML = `
+      <div class="next-card">
+        <div>
+          <div class="unit-title serif">${esc(orgLabel)}</div>
+          <div class="lbl">Your group's next meeting</div>
+          <div class="when serif">${esc(whenLabel)}</div>
+          <div class="where">${esc(meeting.address || 'No address on file')} · ${esc(meeting.frequency)}</div>
+        </div>
+        <div>
+          <a class="btn brass" href="${href}" download="${summary.replace(/[^a-z0-9]+/gi,'-')}.ics">Add to calendar</a>
+        </div>
+      </div>
+    `;
+  }
+
+  boot();
+})();
+</script>
+</body>
+</html>
