@@ -213,7 +213,7 @@
     }
 
     const { data: meeting, error } = await sb
-      .from('meetings_public')
+      .from('meetings')
       .select('frequency, day_of_week, start_time, end_time, timezone, address')
       .eq('node_id', deepest.id)
       .maybeSingle();
