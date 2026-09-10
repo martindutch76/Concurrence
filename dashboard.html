@@ -87,25 +87,32 @@
 
   // ---------- boot ----------
   async function boot(){
-    const { data: { user } } = await sb.auth.getUser();
-    if(!user){ window.location.href = 'index.html'; return; }
+    try{
+      const { data: { user } } = await sb.auth.getUser();
+      if(!user){ window.location.href = 'index.html'; return; }
 
-    const { data: profile, error: profErr } = await sb
-      .from('profiles')
-      .select('id, first_name, last_name, org_id, node_id')
-      .eq('id', user.id)
-      .maybeSingle();
+      const { data: profile, error: profErr } = await sb
+        .from('profiles')
+        .select('id, first_name, last_name, org_id, node_id')
+        .eq('id', user.id)
+        .maybeSingle();
 
-    if(profErr){ mainMount.innerHTML = `<div class="err">Couldn't load your profile: ${esc(profErr.message)}</div>`; return; }
-    if(!profile){ window.location.href = 'onboarding.html'; return; }
+      if(profErr){ throw profErr; }
+      if(!profile){ window.location.href = 'onboarding.html'; return; }
 
-    const [{ data: org }, { data: nodePath }] = await Promise.all([
-      sb.from('organisations').select('name').eq('id', profile.org_id).maybeSingle(),
-      buildNodePath(profile.node_id)
-    ]);
+      const [{ data: org }, nodePath] = await Promise.all([
+        sb.from('organisations').select('name').eq('id', profile.org_id).maybeSingle(),
+        buildNodePath(profile.node_id)
+      ]);
 
-    renderSidebar(org ? org.name : '', nodePath, profile);
-    await renderMyMeeting(profile, nodePath);
+      renderSidebar(org ? org.name : '', nodePath, profile);
+      await renderMyMeeting(profile, nodePath);
+    } catch(err){
+      console.error('Dashboard failed to load:', err);
+      const msg = (err && err.message) ? err.message : String(err);
+      mainMount.innerHTML = `<div class="err">Something went wrong loading the dashboard: ${esc(msg)}</div>`;
+      sideMount.innerHTML += `<div class="err" style="color:#E3A08C;">Error — see main panel</div>`;
+    }
   }
 
   // Walks parent_id up from the user's node to the root, returning an
