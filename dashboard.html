@@ -278,15 +278,15 @@
     back.querySelector('#eMapBtn').onclick = ()=> openMapPicker(back.querySelector('#eAddress'));
     back.querySelector('#eSave').onclick = async ()=>{
       const btn = back.querySelector('#eSave'); btn.disabled = true; btn.textContent = 'Saving…';
-      const { error } = await sb.from('meetings').update({
-        frequency: back.querySelector('#eFreq').value,
-        day_of_week: Number(back.querySelector('#eDay').value),
-        start_time: back.querySelector('#eStart').value,
-        end_time: back.querySelector('#eEnd').value,
-        timezone: back.querySelector('#eTz').value,
-        address: back.querySelector('#eAddress').value.trim()
-        // edited_by / edited_at are set server-side by a trigger — not sent from the client.
-      }).eq('node_id', nodeId);
+      const { error } = await sb.rpc('save_meeting', {
+        p_node_id: nodeId,
+        p_frequency: back.querySelector('#eFreq').value,
+        p_day_of_week: Number(back.querySelector('#eDay').value),
+        p_start_time: back.querySelector('#eStart').value,
+        p_end_time: back.querySelector('#eEnd').value,
+        p_timezone: back.querySelector('#eTz').value,
+        p_address: back.querySelector('#eAddress').value.trim()
+      });
       if(error){ back.querySelector('#eErr').textContent = error.message; btn.disabled=false; btn.textContent='Save'; return; }
       back.remove();
       onSaved();
@@ -447,39 +447,19 @@
     back.querySelector('#sSave').onclick = async ()=>{
       const btn = back.querySelector('#sSave'); btn.disabled = true; btn.textContent = 'Saving…';
       const noMeeting = back.querySelector('#sNoMeeting').checked;
-      const payload = {
-        node_id: nodeId,
-        session_date: isoDate,
-        no_meeting: noMeeting,
-        no_meeting_reason: noMeeting ? 'Flagged by an organisational contact' : null,
-        topic: noMeeting ? null : back.querySelector('#sTopic').value.trim() || null,
-        presenter: noMeeting ? null : back.querySelector('#sPresenter').value.trim() || null,
-        in_person: noMeeting ? true : back.querySelector('#sInPerson').checked,
-        video_url: noMeeting ? null : (back.querySelector('#sVideo').value.trim() || null),
-        keywords: noMeeting ? [] : back.querySelector('#sKeywords').value.split(',').map(x=>x.trim()).filter(Boolean)
-      };
-      // Explicit insert-or-update instead of .upsert() — avoids Postgres's
-      // documented RLS quirk around ON CONFLICT DO UPDATE requiring wider
-      // table visibility than a plain insert, without loosening any policy.
-      // .select() lets us see the affected row(s) — an UPDATE blocked by
-      // RLS returns success with zero rows, not an error, so without this
-      // we'd have no way to tell a real save from a silently-ignored one.
-      const op = session && session.id
-        ? sb.from('sessions').update(payload).eq('id', session.id).select()
-        : sb.from('sessions').insert(payload).select();
-      const { data: savedRows, error } = await op;
-      if(!error && (!savedRows || savedRows.length === 0)){
-        const { data: diag } = await sb.rpc('debug_session_check', { check_node_id: nodeId });
-        const d = (diag && diag[0]) ? diag[0] : null;
-        back.querySelector('#sErr').innerHTML = `Save reported no error, but zero rows were actually updated — almost certainly blocked by a policy silently, not a real success.<br><br><b>Diagnostic:</b><br>` +
-          (d ? `my_email: ${esc(d.my_email)}<br>node_org_id: ${esc(d.node_org_id)}<br>my_org_id: ${esc(d.my_org_id)}<br>approved: ${esc(String(d.approved))}<br>session.id used: ${esc(session && session.id)}` : 'diagnostic call also failed');
-        btn.disabled=false; btn.textContent='Save'; return;
-      }
+      const { error } = await sb.rpc('save_session', {
+        p_node_id: nodeId,
+        p_session_date: isoDate,
+        p_no_meeting: noMeeting,
+        p_no_meeting_reason: noMeeting ? 'Flagged by an organisational contact' : null,
+        p_topic: noMeeting ? null : back.querySelector('#sTopic').value.trim() || null,
+        p_presenter: noMeeting ? null : back.querySelector('#sPresenter').value.trim() || null,
+        p_in_person: noMeeting ? true : back.querySelector('#sInPerson').checked,
+        p_video_url: noMeeting ? null : (back.querySelector('#sVideo').value.trim() || null),
+        p_keywords: noMeeting ? [] : back.querySelector('#sKeywords').value.split(',').map(x=>x.trim()).filter(Boolean)
+      });
       if(error){
-        const { data: diag } = await sb.rpc('debug_session_check', { check_node_id: nodeId });
-        const d = (diag && diag[0]) ? diag[0] : null;
-        back.querySelector('#sErr').innerHTML = `${esc(error.message)}<br><br><b>Diagnostic:</b><br>` +
-          (d ? `my_email: ${esc(d.my_email)}<br>node_org_id: ${esc(d.node_org_id)}<br>my_org_id: ${esc(d.my_org_id)}<br>approved: ${esc(String(d.approved))}` : 'diagnostic call also failed');
+        back.querySelector('#sErr').textContent = error.message;
         btn.disabled=false; btn.textContent='Save'; return;
       }
       back.remove();
