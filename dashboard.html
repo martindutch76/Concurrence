@@ -461,10 +461,20 @@
       // Explicit insert-or-update instead of .upsert() — avoids Postgres's
       // documented RLS quirk around ON CONFLICT DO UPDATE requiring wider
       // table visibility than a plain insert, without loosening any policy.
+      // .select() lets us see the affected row(s) — an UPDATE blocked by
+      // RLS returns success with zero rows, not an error, so without this
+      // we'd have no way to tell a real save from a silently-ignored one.
       const op = session && session.id
-        ? sb.from('sessions').update(payload).eq('id', session.id)
-        : sb.from('sessions').insert(payload);
-      const { error } = await op;
+        ? sb.from('sessions').update(payload).eq('id', session.id).select()
+        : sb.from('sessions').insert(payload).select();
+      const { data: savedRows, error } = await op;
+      if(!error && (!savedRows || savedRows.length === 0)){
+        const { data: diag } = await sb.rpc('debug_session_check', { check_node_id: nodeId });
+        const d = (diag && diag[0]) ? diag[0] : null;
+        back.querySelector('#sErr').innerHTML = `Save reported no error, but zero rows were actually updated — almost certainly blocked by a policy silently, not a real success.<br><br><b>Diagnostic:</b><br>` +
+          (d ? `my_email: ${esc(d.my_email)}<br>node_org_id: ${esc(d.node_org_id)}<br>my_org_id: ${esc(d.my_org_id)}<br>approved: ${esc(String(d.approved))}<br>session.id used: ${esc(session && session.id)}` : 'diagnostic call also failed');
+        btn.disabled=false; btn.textContent='Save'; return;
+      }
       if(error){
         const { data: diag } = await sb.rpc('debug_session_check', { check_node_id: nodeId });
         const d = (diag && diag[0]) ? diag[0] : null;
