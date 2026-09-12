@@ -52,7 +52,7 @@
 </style>
 </head>
 <body>
-  <div class="version-tag">dashboard v5</div>
+  <div class="version-tag">dashboard v6</div>
   <div class="shell">
     <div class="side" id="sideMount">
       <div class="side-brand">
@@ -113,6 +113,7 @@
         const own = await renderMyMeeting(profile, nodePath, !!isApproved);
         await renderConcurrentMeetings(nodePath, own);
         renderLibrary();
+        renderKeywordAlerts();
       }
       await refreshAll();
       window.__refreshDashboard = refreshAll; // so save-modals elsewhere can trigger a full refresh
@@ -316,6 +317,7 @@
       <div id="meetingCardMount"><div class="loading">Loading your meeting…</div></div>
       <div id="concurrentMount"></div>
       <div id="libraryMount"></div>
+      <div id="keywordMount"></div>
     `;
 
     if(!deepest){
@@ -754,6 +756,71 @@
       debounceTimer = setTimeout(()=> runSearch(e.target.value.trim()), 250);
     });
     runSearch('');
+  }
+
+  // ---------- Keyword Alerts: subscribe, then search for matching talks org-wide ----------
+  async function renderKeywordAlerts(){
+    const box = document.getElementById('keywordMount');
+    if(!box) return;
+    box.innerHTML = `
+      <div style="margin-top:26px;">
+        <h2 class="serif" style="font-size:17px;font-weight:500;margin:0 0 4px;">Keyword alerts</h2>
+        <p style="font-size:12px;color:var(--ink-soft);margin:0 0 12px;">Enter keywords for topics you're interested in — we'll show upcoming talks that match, and (once email is wired up) notify you as new ones appear.</p>
+        <div id="kwChips" style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:8px;"></div>
+        <div style="display:flex;gap:6px;max-width:360px;margin-bottom:16px;">
+          <input type="text" id="kwInput" placeholder="Add a keyword…" style="flex:1;padding:8px 10px;border:1px solid var(--stone-line);border-radius:5px;font-family:inherit;font-size:13px;">
+          <button id="kwAddBtn" style="background:var(--brass);color:var(--night-deep);border:none;border-radius:5px;padding:0 14px;font-size:12.5px;font-weight:600;cursor:pointer;">Add</button>
+        </div>
+        <div id="kwResults" class="loading">Loading…</div>
+      </div>
+    `;
+
+    async function loadChipsAndResults(){
+      const { data: rows, error } = await sb.from('keyword_alerts').select('keyword').order('keyword');
+      const chipsEl = document.getElementById('kwChips');
+      if(error){ chipsEl.innerHTML = `<div class="err">${esc(error.message)}</div>`; return; }
+      const keywords = (rows||[]).map(r=>r.keyword);
+      chipsEl.innerHTML = keywords.length
+        ? keywords.map(k=>`<span style="background:var(--night);color:#fff;border-radius:14px;padding:5px 8px 5px 12px;font-size:12px;display:inline-flex;align-items:center;gap:6px;">${esc(k)}<button data-remove="${esc(k)}" style="background:none;border:none;color:#9FADA7;font-size:13px;cursor:pointer;padding:0;">&times;</button></span>`).join('')
+        : `<span style="font-size:12px;color:var(--ink-soft);">No keywords yet — add one below.</span>`;
+      chipsEl.querySelectorAll('[data-remove]').forEach(btn=>{
+        btn.onclick = async ()=>{
+          await sb.rpc('remove_keyword_alert', { p_keyword: btn.dataset.remove });
+          loadChipsAndResults();
+        };
+      });
+
+      const results = document.getElementById('kwResults');
+      if(!keywords.length){ results.innerHTML = `<div class="empty">Add a keyword above to see matching talks.</div>`; return; }
+      results.innerHTML = `<div class="loading">Searching…</div>`;
+      const { data: matches, error: matchErr } = await sb.rpc('search_keyword_matches');
+      if(matchErr){ results.innerHTML = `<div class="err">${esc(matchErr.message)}</div>`; return; }
+      if(!matches || !matches.length){ results.innerHTML = `<div class="empty">No talks match your keywords yet.</div>`; return; }
+      results.innerHTML = matches.map(m=>{
+        const dateLabel = DateTime.fromISO(m.session_date).toFormat('d LLL yyyy');
+        return `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--stone-line);">
+          <div>
+            <div style="font-size:13.5px;font-weight:600;">${esc(m.topic)}</div>
+            <div style="font-size:11.5px;color:var(--ink-soft);margin-top:2px;">${m.presenter ? esc(m.presenter)+' · ' : ''}${esc(m.division_name)} · ${dateLabel} · matches "${esc(m.matched_keyword)}"</div>
+          </div>
+          ${m.video_url ? `<a href="${esc(m.video_url)}" target="_blank" rel="noopener" style="flex:none;background:var(--night);color:#fff;border-radius:5px;padding:7px 13px;font-size:12px;font-weight:600;text-decoration:none;">Join ↗</a>` : ''}
+        </div>`;
+      }).join('');
+    }
+
+    document.getElementById('kwAddBtn').onclick = async ()=>{
+      const inp = document.getElementById('kwInput');
+      const val = inp.value.trim();
+      if(!val) return;
+      await sb.rpc('add_keyword_alert', { p_keyword: val });
+      inp.value = '';
+      loadChipsAndResults();
+    };
+    document.getElementById('kwInput').addEventListener('keydown', e=>{
+      if(e.key==='Enter') document.getElementById('kwAddBtn').click();
+    });
+
+    loadChipsAndResults();
   }
 
   boot();
