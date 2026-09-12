@@ -52,7 +52,7 @@
 </style>
 </head>
 <body>
-  <div class="version-tag">dashboard v2</div>
+  <div class="version-tag">dashboard v3</div>
   <div class="shell">
     <div class="side" id="sideMount">
       <div class="side-brand">
@@ -400,11 +400,16 @@
     }
 
     const kwHtml = (session.keywords||[]).map(k=>`<span style="display:inline-block;background:var(--stone);border-radius:10px;padding:1px 8px;font-size:10.5px;color:var(--ink-soft);margin-right:4px;">${esc(k)}</span>`).join('');
+    let jointHtml = '';
+    if(session.joint_with_node){
+      const { data: partner } = await sb.from('hierarchy_nodes').select('name').eq('id', session.joint_with_node).maybeSingle();
+      jointHtml = `<span style="display:inline-block;background:#E4DAF0;color:#5B3E8A;border-radius:10px;padding:1px 8px;font-size:10.5px;font-weight:600;margin-left:6px;">Joint with ${esc(partner ? partner.name : 'sister division')}</span>`;
+    }
     box.innerHTML = `
       <div style="border:1px solid var(--stone-line);border-radius:6px;padding:14px 16px;background:var(--card);">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
           <div>
-            <div style="font-size:13.5px;font-weight:600;">${esc(session.topic)}</div>
+            <div style="font-size:13.5px;font-weight:600;">${esc(session.topic)}${jointHtml}</div>
             <div style="font-size:12px;color:var(--ink-soft);margin-top:2px;">${session.presenter ? esc(session.presenter)+' · ' : ''}${session.in_person ? 'In person' : ''}${session.in_person && session.video_url ? ' & ' : ''}${session.video_url ? 'Online' : ''}</div>
             <div style="margin-top:6px;">${kwHtml}</div>
           </div>
@@ -432,6 +437,10 @@
           <label style="display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--ink-soft);"><input type="checkbox" id="sInPerson" ${s.in_person!==false?'checked':''}> In person</label>
           <input type="text" id="sVideo" placeholder="Video link (leave blank if not online)" value="${esc(s.video_url||'')}" style="padding:8px 10px;border:1px solid var(--stone-line);border-radius:5px;font-family:inherit;font-size:13px;">
           <input type="text" id="sKeywords" placeholder="Keywords, comma separated" value="${esc((s.keywords||[]).join(', '))}" style="padding:8px 10px;border:1px solid var(--stone-line);border-radius:5px;font-family:inherit;font-size:13px;">
+          <label style="font-size:11.5px;color:var(--ink-soft);">Joint session with (optional)</label>
+          <select id="sJoint" style="padding:8px 10px;border:1px solid var(--stone-line);border-radius:5px;font-family:inherit;font-size:13px;">
+            <option value="">None — just us</option>
+          </select>
         </div>
         <div id="sErr" style="font-size:11.5px;color:var(--ember);min-height:14px;margin-top:8px;"></div>
         <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px;">
@@ -447,9 +456,29 @@
       f.style.opacity = this.checked ? '0.4' : '1';
       f.style.pointerEvents = this.checked ? 'none' : 'auto';
     };
+
+    // Populate the joint-partner dropdown with confirmed sister divisions only.
+    (async ()=>{
+      const { data: rels } = await sb.from('sister_relationships')
+        .select('id,node_a,node_b,status')
+        .or(`node_a.eq.${nodeId},node_b.eq.${nodeId}`)
+        .eq('status', 'confirmed');
+      if(!rels || !rels.length) return;
+      const partnerIds = rels.map(r=> r.node_a===nodeId ? r.node_b : r.node_a);
+      const { data: partners } = await sb.from('hierarchy_nodes').select('id,name').in('id', partnerIds);
+      const sel = back.querySelector('#sJoint');
+      (partners||[]).forEach(p=>{
+        const opt = document.createElement('option');
+        opt.value = p.id; opt.textContent = p.name;
+        if(s.joint_with_node === p.id) opt.selected = true;
+        sel.appendChild(opt);
+      });
+    })();
+
     back.querySelector('#sSave').onclick = async ()=>{
       const btn = back.querySelector('#sSave'); btn.disabled = true; btn.textContent = 'Saving…';
       const noMeeting = back.querySelector('#sNoMeeting').checked;
+      const jointVal = back.querySelector('#sJoint').value || null;
       const { error } = await sb.rpc('save_session', {
         p_node_id: nodeId,
         p_session_date: isoDate,
@@ -459,7 +488,8 @@
         p_presenter: noMeeting ? null : back.querySelector('#sPresenter').value.trim() || null,
         p_in_person: noMeeting ? true : back.querySelector('#sInPerson').checked,
         p_video_url: noMeeting ? null : (back.querySelector('#sVideo').value.trim() || null),
-        p_keywords: noMeeting ? [] : back.querySelector('#sKeywords').value.split(',').map(x=>x.trim()).filter(Boolean)
+        p_keywords: noMeeting ? [] : back.querySelector('#sKeywords').value.split(',').map(x=>x.trim()).filter(Boolean),
+        p_joint_with_node: noMeeting ? null : jointVal
       });
       if(error){
         back.querySelector('#sErr').textContent = error.message;
