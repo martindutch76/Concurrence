@@ -52,7 +52,7 @@
 </style>
 </head>
 <body>
-  <div class="version-tag">dashboard v4</div>
+  <div class="version-tag">dashboard v5</div>
   <div class="shell">
     <div class="side" id="sideMount">
       <div class="side-brand">
@@ -109,9 +109,13 @@
       ]);
 
       renderSidebar(org ? org.name : '', nodePath, profile);
-      const own = await renderMyMeeting(profile, nodePath, !!isApproved);
-      await renderConcurrentMeetings(nodePath, own);
-      renderLibrary();
+      async function refreshAll(){
+        const own = await renderMyMeeting(profile, nodePath, !!isApproved);
+        await renderConcurrentMeetings(nodePath, own);
+        renderLibrary();
+      }
+      await refreshAll();
+      window.__refreshDashboard = refreshAll; // so save-modals elsewhere can trigger a full refresh
     } catch(err){
       console.error('Dashboard failed to load:', err);
       const msg = (err && err.message) ? err.message : String(err);
@@ -360,11 +364,11 @@
 
     if(isApproved){
       document.getElementById('editMeetingBtn').onclick = ()=>{
-        openEditMeetingModal(deepest.id, orgLabel, meeting, ()=> renderMyMeeting(profile, nodePath, isApproved));
+        openEditMeetingModal(deepest.id, orgLabel, meeting, ()=> window.__refreshDashboard());
       };
     }
 
-    await renderSession(deepest.id, orgLabel, start.toISODate(), isApproved, ()=> renderMyMeeting(profile, nodePath, isApproved));
+    await renderSession(deepest.id, orgLabel, start.toISODate(), isApproved, ()=> window.__refreshDashboard());
 
     return { meeting, start, end };
   }
