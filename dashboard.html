@@ -52,7 +52,7 @@
 </style>
 </head>
 <body>
-  <div class="version-tag">dashboard v8</div>
+  <div class="version-tag">dashboard v9</div>
   <div class="shell">
     <div class="side" id="sideMount">
       <div class="side-brand">
@@ -499,7 +499,7 @@
       const btn = back.querySelector('#sSave'); btn.disabled = true; btn.textContent = 'Saving…';
       const noMeeting = back.querySelector('#sNoMeeting').checked;
       const jointVal = back.querySelector('#sJoint').value || null;
-      const { error } = await sb.rpc('save_session', {
+      const { data: saveResult, error } = await sb.rpc('save_session', {
         p_node_id: nodeId,
         p_session_date: isoDate,
         p_no_meeting: noMeeting,
@@ -514,6 +514,13 @@
       if(error){
         back.querySelector('#sErr').textContent = error.message;
         btn.disabled=false; btn.textContent='Save'; return;
+      }
+      const contactRequestId = saveResult && saveResult[0] && saveResult[0].contact_request_id;
+      if(contactRequestId){
+        // A new joint pairing was flagged — notify the partner division.
+        // Fire-and-forget: the session itself is already saved regardless.
+        sb.functions.invoke('notify-request', { body: { contactRequestId } })
+          .catch(err => console.error('Joint session notification failed to send:', err));
       }
       back.remove();
       onSaved();
