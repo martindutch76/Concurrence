@@ -52,7 +52,7 @@
 </style>
 </head>
 <body>
-  <div class="version-tag">dashboard v6</div>
+  <div class="version-tag">dashboard v8</div>
   <div class="shell">
     <div class="side" id="sideMount">
       <div class="side-brand">
@@ -541,8 +541,12 @@
     back.querySelector('#reqSend').onclick = async ()=>{
       const btn = back.querySelector('#reqSend'); btn.disabled=true; btn.textContent='Sending…';
       const msg = back.querySelector('#reqMsg').value.trim() || `We'd like to become sister divisions.`;
-      const { error } = await sb.rpc('request_sister_relationship', { p_target_node_id: targetNodeId, p_message: msg });
+      const { data: contactRequestId, error } = await sb.rpc('request_sister_relationship', { p_target_node_id: targetNodeId, p_message: msg });
       if(error){ back.querySelector('#reqErr').textContent = error.message; btn.disabled=false; btn.textContent='Send request'; return; }
+      // Fire-and-forget: the request itself is already saved regardless of
+      // whether the email succeeds, so we don't block the UI on this.
+      sb.functions.invoke('notify-request', { body: { contactRequestId } })
+        .catch(err => console.error('Notification email failed to send:', err));
       back.remove();
       onDone();
     };
@@ -737,6 +741,7 @@
       const { data, error } = await sb.rpc('search_library', { p_query: q || '' });
       if(error){ results.innerHTML = `<div class="err">${esc(error.message)}</div>`; return; }
       if(!data || !data.length){ results.innerHTML = `<div class="empty">No recordings found${q ? ' for "'+esc(q)+'"' : ' yet'}.</div>`; return; }
+      results.className = '';
       results.innerHTML = data.map(r=>{
         const dateLabel = DateTime.fromISO(r.session_date).toFormat('d LLL yyyy');
         const kw = (r.keywords||[]).map(k=>`<span style="display:inline-block;background:var(--stone);border-radius:10px;padding:1px 8px;font-size:10px;color:var(--ink-soft);margin-right:4px;">${esc(k)}</span>`).join('');
@@ -796,6 +801,7 @@
       const { data: matches, error: matchErr } = await sb.rpc('search_keyword_matches');
       if(matchErr){ results.innerHTML = `<div class="err">${esc(matchErr.message)}</div>`; return; }
       if(!matches || !matches.length){ results.innerHTML = `<div class="empty">No talks match your keywords yet.</div>`; return; }
+      results.className = '';
       results.innerHTML = matches.map(m=>{
         const dateLabel = DateTime.fromISO(m.session_date).toFormat('d LLL yyyy');
         return `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--stone-line);">
