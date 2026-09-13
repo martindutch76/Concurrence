@@ -69,7 +69,7 @@
 </style>
 </head>
 <body>
-  <div class="version-tag">dashboard v20</div>
+  <div class="version-tag">dashboard v21</div>
   <div class="shell">
     <div class="side" id="sideMount">
       <div class="side-brand">
@@ -215,7 +215,7 @@
       <div class="side-foot">
         Signed in as ${esc(profile.first_name)} ${esc(profile.last_name)}
         <a class="signout-link" id="signOutLink">Sign out</a>
-        <div style="margin-top:10px;opacity:0.5;">dashboard.html — v20</div>
+        <div style="margin-top:10px;opacity:0.5;">dashboard.html — v21</div>
       </div>
     `;
     const VIEWS = ['dashboardMount','otherEventsMount','libraryMount','keywordMount','profileMount','aboutMount'];
@@ -1272,6 +1272,7 @@
 
     const todayIso = DateTime.now().toISODate();
 
+    rowsEl.className = '';
     rowsEl.innerHTML = dates.map(dt=>{
       const iso = dt.toISODate();
       const s = myByDate[iso];
