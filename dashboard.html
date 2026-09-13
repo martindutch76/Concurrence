@@ -64,7 +64,7 @@
 </style>
 </head>
 <body>
-  <div class="version-tag">dashboard v12</div>
+  <div class="version-tag">dashboard v13</div>
   <div class="shell">
     <div class="side" id="sideMount">
       <div class="side-brand">
@@ -185,12 +185,38 @@
         <div class="org-name">${esc(orgName)}</div>
         You're signed in at<br><b>${esc(deepest)}</b><br>${esc(ancestors)}
       </div>
+      <div class="nav">
+        <a class="active" id="navDashboard">Dashboard</a>
+        <a id="navOtherEvents">Other Events</a>
+        <a id="navLibrary">Library</a>
+        <a id="navKeywords">Keyword alerts</a>
+        <a id="navProfile">Profile</a>
+        <a id="navAbout">About us</a>
+      </div>
       <div class="side-foot">
         Signed in as ${esc(profile.first_name)} ${esc(profile.last_name)}
         <a class="signout-link" id="signOutLink">Sign out</a>
-        <div style="margin-top:10px;opacity:0.5;">dashboard.html — v1</div>
+        <div style="margin-top:10px;opacity:0.5;">dashboard.html — v13</div>
       </div>
     `;
+    const VIEWS = ['dashboardMount','otherEventsMount','libraryMount','keywordMount','profileMount','aboutMount'];
+    const NAV_IDS = {dashboardMount:'navDashboard', otherEventsMount:'navOtherEvents', libraryMount:'navLibrary', keywordMount:'navKeywords', profileMount:'navProfile', aboutMount:'navAbout'};
+    window.__showView = function(id){
+      VIEWS.forEach(v=>{
+        const el = document.getElementById(v);
+        if(el) el.style.display = (v===id) ? '' : 'none';
+        const navEl = document.getElementById(NAV_IDS[v]);
+        if(navEl) navEl.classList.toggle('active', v===id);
+      });
+      if(id==='aboutMount') renderAboutPage();
+      if(id==='otherEventsMount') renderOtherEvents();
+    };
+    document.getElementById('navDashboard').onclick = ()=> window.__showView('dashboardMount');
+    document.getElementById('navOtherEvents').onclick = ()=> window.__showView('otherEventsMount');
+    document.getElementById('navLibrary').onclick = ()=> window.__showView('libraryMount');
+    document.getElementById('navKeywords').onclick = ()=> window.__showView('keywordMount');
+    document.getElementById('navProfile').onclick = ()=> window.__showView('profileMount');
+    document.getElementById('navAbout').onclick = ()=> window.__showView('aboutMount');
     document.getElementById('signOutLink').onclick = async ()=>{
       await sb.auth.signOut();
       window.location.href = 'index.html';
@@ -331,18 +357,22 @@
     const orgLabel = deepest ? deepest.name : 'your group';
 
     mainMount.innerHTML = `
-      <div class="topline">
-        <div>
-          <h1 class="serif">Good day, ${esc(profile.first_name)}</h1>
-          <div class="sub">${esc(orgLabel)}</div>
+      <div id="dashboardMount">
+        <div class="topline">
+          <div>
+            <h1 class="serif">Good day, ${esc(profile.first_name)}</h1>
+            <div class="sub">${esc(orgLabel)}</div>
+          </div>
+          <div class="avatar">${esc((profile.first_name||' ')[0])}${esc((profile.last_name||' ')[0])}</div>
         </div>
-        <div class="avatar">${esc((profile.first_name||' ')[0])}${esc((profile.last_name||' ')[0])}</div>
+        <div id="meetingCardMount"><div class="loading">Loading your meeting…</div></div>
+        <div id="concurrentMount"></div>
       </div>
-      <div id="meetingCardMount"><div class="loading">Loading your meeting…</div></div>
-      <div id="concurrentMount"></div>
-      <div id="libraryMount"></div>
-      <div id="keywordMount"></div>
-      <div id="profileMount"></div>
+      <div id="otherEventsMount" style="display:none;"></div>
+      <div id="libraryMount" style="display:none;"></div>
+      <div id="keywordMount" style="display:none;"></div>
+      <div id="profileMount" style="display:none;"></div>
+      <div id="aboutMount" style="display:none;"></div>
     `;
 
     if(!deepest){
@@ -944,6 +974,57 @@
       profile.is_org_contact = document.getElementById('pfContact').checked;
       renderSidebar(document.querySelector('.org-name') ? document.querySelector('.org-name').textContent : '', nodePath, profile);
     };
+  }
+
+  // ---------- About us ----------
+  function renderAboutPage(){
+    const box = document.getElementById('aboutMount');
+    if(!box || box.dataset.loaded) return; // static content, only build once
+    box.dataset.loaded = '1';
+    box.innerHTML = `
+      <div style="background:var(--night);color:#fff;border-radius:6px;padding:32px;margin-bottom:26px;">
+        <h1 class="serif" style="font-size:24px;margin:0 0 10px;font-weight:500;">What is Concurrence?</h1>
+        <p style="font-size:14px;color:#C9CFC9;line-height:1.65;max-width:600px;margin:0;">Concurrence is a shared weekly view of when volunteer study, fellowship and education groups meet, within your organisation — built so a division in Kalgoorlie can discover, at a glance, that a division in Hobart sits down to learn the very same hour they do. It's not a video-calling tool; it's the map that helps you find who's worth calling.</p>
+      </div>
+      <div style="margin-bottom:26px;">
+        <h2 class="serif" style="font-size:16px;font-weight:600;margin:0 0 10px;">Who it's for</h2>
+        <p style="font-size:13.5px;color:var(--ink-soft);line-height:1.65;max-width:640px;margin:0 0 12px;">Any organisation with local groups spread across regions or states, where some groups — especially small, regional or remote ones — struggle to access good speakers, guest talks, or a wider sense of community on their own.</p>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;">
+          <span style="background:var(--stone);border-radius:20px;padding:7px 15px;font-size:12.5px;">Local group members</span>
+          <span style="background:var(--stone);border-radius:20px;padding:7px 15px;font-size:12.5px;">Regional &amp; state administrators</span>
+          <span style="background:var(--stone);border-radius:20px;padding:7px 15px;font-size:12.5px;">Regional &amp; remote groups</span>
+          <span style="background:var(--stone);border-radius:20px;padding:7px 15px;font-size:12.5px;">National coordinators</span>
+        </div>
+      </div>
+      <div>
+        <h2 class="serif" style="font-size:16px;font-weight:600;margin:0 0 12px;">What you can do with it</h2>
+        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:14px;">
+          ${[
+            ['See who else is meeting right now', "Your weekly meeting sits alongside every other group's, automatically converted to your local time — no timezone maths required."],
+            ['Become sister divisions', 'Turn a same-hour coincidence into a standing partnership with a group anywhere in the organisation, confirmed with a one-click link — including by email.'],
+            ['Plan joint sessions', 'Combine a session with a sister division — one shared topic, one shared call link, both groups on the roster.'],
+            ['Publish topics &amp; keywords', 'Tag what you are covering so other groups — and the keyword-alert system — can actually find it.'],
+            ['Browse the Library', 'Search past talks with a recording attached, by title, presenter or keyword, across the whole organisation.'],
+            ['Get keyword alerts', "Register topics you care about and we'll surface upcoming talks that match — and email you when a new one appears."],
+            ['Higher-level events', 'See one-off sessions held by your Region, State or National body, with topic, date and a call link.'],
+            ['Flag "no meeting" weeks', "Mark public holidays or school-holiday breaks so no one gets a false calendar reminder for a week you're not meeting."]
+          ].map(([t,d])=>`<div style="background:var(--card);border:1px solid var(--stone-line);border-radius:6px;padding:16px 18px;"><div style="font-size:13.5px;font-weight:600;margin-bottom:5px;">${t}</div><div style="font-size:12.5px;color:var(--ink-soft);line-height:1.55;">${d}</div></div>`).join('')}
+        </div>
+      </div>
+    `;
+  }
+
+  // ---------- Other Events: placeholder for now, real version coming next ----------
+  function renderOtherEvents(){
+    const box = document.getElementById('otherEventsMount');
+    if(!box) return;
+    box.innerHTML = `
+      <div style="background:var(--night);border-radius:6px;padding:16px 20px;margin-bottom:14px;">
+        <h2 class="serif" style="font-size:17px;font-weight:500;margin:0 0 4px;color:#fff;">Other Events</h2>
+        <p style="font-size:12px;color:#B7CFC9;margin:0;">One-off sessions from your Region, State and National bodies.</p>
+      </div>
+      <div class="empty">This is coming in the next build pass — the database table exists, but reading/writing to it isn't wired up yet.</div>
+    `;
   }
 
   boot();
