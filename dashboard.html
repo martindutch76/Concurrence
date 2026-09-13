@@ -69,7 +69,7 @@
 </style>
 </head>
 <body>
-  <div class="version-tag">dashboard v18</div>
+  <div class="version-tag">dashboard v19</div>
   <div class="shell">
     <div class="side" id="sideMount">
       <div class="side-brand">
@@ -215,7 +215,7 @@
       <div class="side-foot">
         Signed in as ${esc(profile.first_name)} ${esc(profile.last_name)}
         <a class="signout-link" id="signOutLink">Sign out</a>
-        <div style="margin-top:10px;opacity:0.5;">dashboard.html — v18</div>
+        <div style="margin-top:10px;opacity:0.5;">dashboard.html — v19</div>
       </div>
     `;
     const VIEWS = ['dashboardMount','otherEventsMount','libraryMount','keywordMount','profileMount','aboutMount'];
@@ -256,6 +256,35 @@
     }
     const end = candidate.set({ hour: eh, minute: em });
     return { start: candidate, end };
+  }
+
+  // Computes the occurrence on a SPECIFIC known date (no searching needed) —
+  // used for month-browsing, where we already know which date we're on.
+  function occurrenceOnDate(dateISO, startTime, endTime, timezone){
+    const [sh, sm] = startTime.split(':').map(Number);
+    const [eh, em] = endTime.split(':').map(Number);
+    const start = DateTime.fromISO(dateISO, { zone: timezone }).set({ hour: sh, minute: sm, second: 0, millisecond: 0 });
+    const end = start.set({ hour: eh, minute: em });
+    return { start, end };
+  }
+
+  // Finds a peer's occurrence CLOSEST in absolute time to a given moment —
+  // used for per-date concurrent overlap in month-browsing, where the peer's
+  // own weekday may land on a different calendar date than ours, especially
+  // once timezone shifts are accounted for.
+  function occurrenceNearMoment(targetMoment, dayOfWeek, startTime, endTime, timezone){
+    const targetIsoWeekday = dayOfWeek === 0 ? 7 : dayOfWeek;
+    const [sh, sm] = startTime.split(':').map(Number);
+    const [eh, em] = endTime.split(':').map(Number);
+    let best = null, bestDiff = Infinity;
+    for(let offset = -4; offset <= 4; offset++){
+      const candidate = targetMoment.setZone(timezone).plus({ days: offset }).set({ hour: sh, minute: sm, second: 0, millisecond: 0 });
+      if(candidate.weekday !== targetIsoWeekday) continue;
+      const diff = Math.abs(candidate.toMillis() - targetMoment.toMillis());
+      if(diff < bestDiff){ bestDiff = diff; best = candidate; }
+    }
+    if(!best) return null;
+    return { start: best, end: best.set({ hour: eh, minute: em }) };
   }
 
   function icsHref(summary, location, dtStartUTC, dtEndUTC){
@@ -1265,6 +1294,9 @@
   async function renderSessionMonth(nodeId, orgLabel, meeting, isApproved){
     const box = document.getElementById('monthMount');
     if(!box) return;
+    const nodePath = window.__nodePath || [];
+    const deepest = nodePath.length ? nodePath[nodePath.length-1] : null;
+    const refreshMonth = ()=> renderSessionMonth(nodeId, orgLabel, meeting, isApproved);
 
     const monthLabel = DateTime.local(sessionViewYear, sessionViewMonth, 1).toFormat('LLLL yyyy');
     box.innerHTML = `
@@ -1276,16 +1308,16 @@
           <button id="monthNext" style="background:#fff;border:1px solid var(--stone-line);width:26px;height:26px;border-radius:5px;font-size:15px;line-height:1;cursor:pointer;">›</button>
         </div>
       </div>
-      <div id="monthScroll" class="loading">Loading month…</div>
+      <div id="monthRows" class="loading">Loading month…</div>
     `;
 
     document.getElementById('monthPrev').onclick = ()=>{
       sessionViewMonth--; if(sessionViewMonth < 1){ sessionViewMonth = 12; sessionViewYear--; }
-      renderSessionMonth(nodeId, orgLabel, meeting, isApproved);
+      refreshMonth();
     };
     document.getElementById('monthNext').onclick = ()=>{
       sessionViewMonth++; if(sessionViewMonth > 12){ sessionViewMonth = 1; sessionViewYear++; }
-      renderSessionMonth(nodeId, orgLabel, meeting, isApproved);
+      refreshMonth();
     };
 
     const targetIsoWeekday = meeting.day_of_week === 0 ? 7 : meeting.day_of_week;
@@ -1297,59 +1329,152 @@
       if(dt.weekday === targetIsoWeekday) dates.push(dt);
     }
 
-    const scrollEl = document.getElementById('monthScroll');
+    const rowsEl = document.getElementById('monthRows');
     if(!dates.length){
-      scrollEl.innerHTML = `<div class="empty">Your group doesn't meet on this weekday, so there's nothing to show for ${monthLabel}.</div>`;
+      rowsEl.innerHTML = `<div class="empty">Your group doesn't meet on this weekday, so there's nothing to show for ${monthLabel}.</div>`;
       return;
     }
 
     const fromDate = dates[0].toISODate();
     const toDate = dates[dates.length-1].toISODate();
-    const { data: sessions, error } = await sb.rpc('get_sessions_for_node', {
+    const { data: mySessions, error } = await sb.rpc('get_sessions_for_node', {
       check_node_id: nodeId, from_date: fromDate, to_date: toDate
     });
-    if(error){ scrollEl.innerHTML = `<div class="err">${esc(error.message)}</div>`; return; }
+    if(error){ rowsEl.innerHTML = `<div class="err">${esc(error.message)}</div>`; return; }
+    const myByDate = {};
+    (mySessions||[]).forEach(s=> myByDate[s.session_date] = s);
 
-    const byDate = {};
-    (sessions||[]).forEach(s=> byDate[s.session_date] = s);
+    // Peers at the same level, for per-date concurrent overlap.
+    let peers = [], peerMeetings = [], relByPeer = {}, peerSessions = [];
+    if(deepest){
+      const { data: peerNodes } = await sb.from('hierarchy_nodes').select('id,name')
+        .eq('org_id', deepest.org_id).eq('level_id', deepest.level_id).neq('id', deepest.id);
+      peers = peerNodes || [];
+      if(peers.length){
+        const { data: pm } = await sb.from('meetings')
+          .select('node_id, day_of_week, start_time, end_time, timezone, address')
+          .in('node_id', peers.map(p=>p.id));
+        peerMeetings = pm || [];
+
+        const { data: rels } = await sb.from('sister_relationships')
+          .select('id,node_a,node_b,status')
+          .or(`node_a.eq.${deepest.id},node_b.eq.${deepest.id}`);
+        (rels||[]).forEach(r=>{
+          const peerId = r.node_a === deepest.id ? r.node_b : r.node_a;
+          relByPeer[peerId] = { id: r.id, status: r.status, iAmNodeA: r.node_a === deepest.id };
+        });
+
+        // Widened by 4 days each side so a peer occurrence shifted onto a
+        // different calendar date by timezone is still caught.
+        const rangeStart = dates[0].minus({ days: 4 }).toISODate();
+        const rangeEnd = dates[dates.length-1].plus({ days: 4 }).toISODate();
+        const { data: ps } = await sb.from('sessions')
+          .select('node_id, session_date, topic, presenter, joint_with_node')
+          .in('node_id', peers.map(p=>p.id))
+          .gte('session_date', rangeStart).lte('session_date', rangeEnd);
+        peerSessions = ps || [];
+      }
+    }
+
     const todayIso = DateTime.now().toISODate();
 
-    scrollEl.style.cssText = 'display:flex;gap:12px;overflow-x:auto;padding-bottom:6px;';
-    scrollEl.innerHTML = dates.map(dt=>{
+    rowsEl.innerHTML = dates.map(dt=>{
       const iso = dt.toISODate();
-      const s = byDate[iso];
+      const s = myByDate[iso];
       const isToday = iso === todayIso;
       const dayNum = dt.toFormat('d');
       const monAbbr = dt.toFormat('LLL').toUpperCase();
-      const cardClass = s && s.no_meeting ? 'no-meeting-card' : '';
-      let body;
+
+      let anchorBody, anchorClass = '';
       if(s && s.no_meeting){
-        body = `<div style="font-size:12px;font-weight:600;color:var(--ink-soft);">No meeting${s.no_meeting_reason ? ' — '+esc(s.no_meeting_reason) : ''}</div>`;
+        anchorClass = 'no-meeting-card';
+        anchorBody = `<div style="font-weight:600;font-size:13px;color:var(--ink-soft);">No meeting${s.no_meeting_reason ? ' — '+esc(s.no_meeting_reason) : ''}</div>`;
       } else if(s && s.topic){
         const joint = s.joint_with_node ? `<div style="font-size:9.5px;font-weight:700;color:#7C5CB8;margin-bottom:2px;">JOINT SESSION</div>` : '';
-        body = `${joint}<div style="font-size:12.5px;font-weight:600;">${esc(s.topic)}</div><div style="font-size:11px;color:var(--ink-soft);margin-top:2px;">${s.presenter ? esc(s.presenter) : ''}</div>`;
+        anchorBody = `${joint}<div style="font-size:13px;font-weight:600;">${esc(s.topic)}</div><div style="font-size:11px;color:var(--ink-soft);margin-top:2px;">${s.presenter?esc(s.presenter):''}</div>`;
       } else {
-        body = `<div style="font-size:12px;color:var(--ink-soft);">No topic set yet.</div>`;
+        anchorBody = `<div style="font-size:12px;color:var(--ink-soft);">No topic set yet.</div>`;
       }
-      return `
-        <div class="${cardClass}" data-date="${iso}" style="flex:none;width:190px;background:var(--card);border:1px solid ${isToday ? 'var(--brass)' : 'var(--stone-line)'};${isToday ? 'border-width:2px;' : ''}border-radius:6px;padding:12px 13px;cursor:${isApproved ? 'pointer' : 'default'};">
-          <div style="display:flex;align-items:baseline;gap:7px;margin-bottom:7px;">
+      const editBtn = isApproved ? `<button data-edit-date="${iso}" style="margin-top:8px;font-size:11px;padding:5px 9px;border:1px solid var(--stone-line);background:#fff;border-radius:4px;cursor:pointer;">${s && s.topic ? 'Edit' : 'Add topic'}</button>` : '';
+
+      const anchorHtml = `
+        <div class="${anchorClass}" style="flex:none;width:230px;background:var(--card);border:1px solid var(--stone-line);border-radius:6px;padding:13px 14px;">
+          <div style="display:flex;align-items:baseline;gap:7px;margin-bottom:8px;">
             <span style="font-size:20px;font-weight:600;line-height:1;">${dayNum}</span>
             <span style="font-size:10.5px;color:var(--ink-soft);text-transform:uppercase;">${monAbbr}</span>
             ${isToday ? '<span style="font-size:9px;background:var(--brass);color:var(--night-deep);border-radius:8px;padding:1px 6px;font-weight:700;margin-left:auto;">TODAY</span>' : ''}
           </div>
-          ${body}
+          ${anchorBody}
+          ${editBtn}
         </div>`;
+
+      const myOcc = occurrenceOnDate(iso, meeting.start_time, meeting.end_time, meeting.timezone);
+      const peerCards = [];
+      peerMeetings.forEach(pm=>{
+        const peer = peers.find(p=>p.id===pm.node_id);
+        if(!peer) return;
+        const peerOcc = occurrenceNearMoment(myOcc.start, pm.day_of_week, pm.start_time, pm.end_time, pm.timezone);
+        if(!peerOcc) return;
+        const overlapStart = Math.max(peerOcc.start.toMillis(), myOcc.start.toMillis());
+        const overlapEnd = Math.min(peerOcc.end.toMillis(), myOcc.end.toMillis());
+        const overlapMin = Math.round((overlapEnd - overlapStart) / 60000);
+        if(overlapMin <= 0) return;
+
+        const peerDateIso = peerOcc.start.toISODate();
+        const peerSession = peerSessions.find(ps=> ps.node_id===pm.node_id && ps.session_date===peerDateIso);
+        const rel = relByPeer[pm.node_id];
+        const yourStart = peerOcc.start.setZone(meeting.timezone);
+        const yourEnd = peerOcc.end.setZone(meeting.timezone);
+        const sameZone = meeting.timezone === pm.timezone;
+        const timeLabel = `${yourStart.toFormat('h:mma')}–${yourEnd.toFormat('h:mma')}`;
+        const theirLabel = sameZone ? 'same time zone as you' : `${peerOcc.start.toFormat('h:mma')}–${peerOcc.end.toFormat('h:mma')} their time`;
+
+        let actionHtml;
+        if(!rel) actionHtml = `<button class="btn brass" data-req="${pm.node_id}" data-name="${esc(peer.name)}" style="font-size:11px;padding:5px 9px;margin-top:6px;">Become sisters</button>`;
+        else if(rel.status==='confirmed') actionHtml = `<span style="display:inline-block;background:#DDEAE0;color:#2E6B44;border-radius:10px;padding:2px 8px;font-size:10.5px;font-weight:600;margin-top:6px;">Sister division</span>`;
+        else if(rel.status==='pending' && rel.iAmNodeA) actionHtml = `<span style="display:inline-block;background:#F2E9D3;color:#8A6A24;border-radius:10px;padding:2px 8px;font-size:10.5px;font-weight:600;margin-top:6px;">Request sent</span>`;
+        else if(rel.status==='pending' && !rel.iAmNodeA) actionHtml = `<button class="btn brass" data-respond="${rel.id}" data-name="${esc(peer.name)}" style="font-size:11px;padding:5px 9px;margin-top:6px;">Respond to request</button>`;
+        else actionHtml = `<span style="font-size:10.5px;color:var(--ink-soft);margin-top:6px;display:inline-block;">Declined</span>`;
+
+        const isJointWithMe = !!(peerSession && peerSession.joint_with_node === nodeId);
+        const topicLine = peerSession && peerSession.topic
+          ? `${isJointWithMe?'Joint: ':'Next: '}<b>${esc(peerSession.topic)}</b>`
+          : `No topic published yet`;
+        const cardStyle = isJointWithMe
+          ? 'flex:none;width:180px;background:#FAF7FE;border:1px solid #B7A0DE;border-radius:6px;padding:11px 12px;'
+          : 'flex:none;width:180px;background:var(--card);border:1px solid var(--stone-line);border-radius:6px;padding:11px 12px;';
+
+        peerCards.push(`
+          <div style="${cardStyle}">
+            <div style="font-size:12px;font-weight:600;margin-bottom:2px;">${esc(peer.name)}<span style="display:inline-block;background:#F2E4C6;color:#8A6A24;border-radius:10px;padding:1px 6px;font-size:9.5px;font-weight:600;margin-left:4px;">${overlapMin} min</span></div>
+            <div style="font-size:11.5px;font-weight:600;margin:4px 0 1px;">${timeLabel}</div>
+            <div style="font-size:10px;color:var(--ink-soft);margin-bottom:5px;">${esc(theirLabel)}</div>
+            <div style="font-size:10.5px;${peerSession && peerSession.topic ? '' : 'color:var(--ink-soft);'}">${topicLine}</div>
+            ${actionHtml}
+          </div>`);
+      });
+
+      const scrollHtml = peerCards.length
+        ? `<div style="flex:1;min-width:0;display:flex;gap:10px;overflow-x:auto;padding-bottom:4px;">${peerCards.join('')}</div>`
+        : `<div style="flex:1;min-width:0;display:flex;align-items:center;color:var(--ink-soft);font-size:12px;padding-left:6px;">No concurrent groups this date.</div>`;
+
+      return `<div style="display:flex;gap:14px;margin-bottom:14px;align-items:stretch;">${anchorHtml}${scrollHtml}</div>`;
     }).join('');
 
     if(isApproved){
-      scrollEl.querySelectorAll('[data-date]').forEach(card=>{
-        card.onclick = ()=>{
-          const iso = card.dataset.date;
-          openSessionModal(nodeId, orgLabel, iso, byDate[iso] || null, ()=> window.__refreshDashboard());
+      rowsEl.querySelectorAll('[data-edit-date]').forEach(btn=>{
+        btn.onclick = ()=>{
+          const iso = btn.dataset.editDate;
+          openSessionModal(nodeId, orgLabel, iso, myByDate[iso] || null, ()=> window.__refreshDashboard());
         };
       });
     }
+    rowsEl.querySelectorAll('[data-req]').forEach(btn=>{
+      btn.onclick = ()=> openSisterRequestModal(btn.dataset.req, btn.dataset.name, refreshMonth);
+    });
+    rowsEl.querySelectorAll('[data-respond]').forEach(btn=>{
+      btn.onclick = ()=> openRespondModal(btn.dataset.respond, btn.dataset.name, refreshMonth);
+    });
   }
 
   boot();
