@@ -17,6 +17,10 @@
   body{ margin:0; background:var(--stone); color:var(--ink); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; font-size:13.5px; }
   .serif{ font-family:"New York",ui-serif,Georgia,"Times New Roman",serif; }
   a{ color:inherit; }
+  .nav{ display:flex; flex-direction:column; gap:2px; margin-bottom:18px; }
+  .nav a{ display:flex; align-items:center; padding:8px 10px; border-radius:4px; font-size:13px; text-decoration:none; color:#C9CFC9; cursor:pointer; }
+  .nav a.active{ background:rgba(255,255,255,0.08); color:#fff; font-weight:600; }
+  .nav a:hover{ color:#fff; }
   button{ font-family:inherit; cursor:pointer; }
 
   .shell{ display:grid; grid-template-columns:216px 1fr; min-height:100vh; }
@@ -64,7 +68,7 @@
 </style>
 </head>
 <body>
-  <div class="version-tag">dashboard v13</div>
+  <div class="version-tag">dashboard v14</div>
   <div class="shell">
     <div class="side" id="sideMount">
       <div class="side-brand">
@@ -196,7 +200,7 @@
       <div class="side-foot">
         Signed in as ${esc(profile.first_name)} ${esc(profile.last_name)}
         <a class="signout-link" id="signOutLink">Sign out</a>
-        <div style="margin-top:10px;opacity:0.5;">dashboard.html — v13</div>
+        <div style="margin-top:10px;opacity:0.5;">dashboard.html — v14</div>
       </div>
     `;
     const VIEWS = ['dashboardMount','otherEventsMount','libraryMount','keywordMount','profileMount','aboutMount'];
