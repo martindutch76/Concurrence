@@ -69,7 +69,7 @@
 </style>
 </head>
 <body>
-  <div class="version-tag">dashboard v21</div>
+  <div class="version-tag">dashboard v23</div>
   <div class="shell">
     <div class="side" id="sideMount">
       <div class="side-brand">
@@ -203,6 +203,7 @@
       <div class="org-path">
         <div class="org-name">${esc(orgName)}</div>
         You're signed in at<br><b>${esc(deepest)}</b><br>${esc(ancestors)}
+        <div><button id="editPositionLink" style="background:none;border:none;color:var(--brass-soft);font-size:11.5px;text-decoration:underline;cursor:pointer;padding:6px 0 0;">Edit</button></div>
       </div>
       <div class="nav">
         <a class="active" id="navDashboard">Dashboard</a>
@@ -215,7 +216,7 @@
       <div class="side-foot">
         Signed in as ${esc(profile.first_name)} ${esc(profile.last_name)}
         <a class="signout-link" id="signOutLink">Sign out</a>
-        <div style="margin-top:10px;opacity:0.5;">dashboard.html — v21</div>
+        <div style="margin-top:10px;opacity:0.5;">dashboard.html — v23</div>
       </div>
     `;
     const VIEWS = ['dashboardMount','otherEventsMount','libraryMount','keywordMount','profileMount','aboutMount'];
@@ -235,6 +236,7 @@
     document.getElementById('navLibrary').onclick = ()=> window.__showView('libraryMount');
     document.getElementById('navKeywords').onclick = ()=> window.__showView('keywordMount');
     document.getElementById('navProfile').onclick = ()=> window.__showView('profileMount');
+    document.getElementById('editPositionLink').onclick = ()=> window.__showView('profileMount');
     document.getElementById('navAbout').onclick = ()=> window.__showView('aboutMount');
     document.getElementById('signOutLink').onclick = async ()=>{
       await sb.auth.signOut();
@@ -825,6 +827,21 @@
   }
 
   // ---------- Library: org-wide search over sessions with a recording attached ----------
+  function libraryItemHtml(r, highlighted){
+    const dateLabel = DateTime.fromISO(r.session_date).toFormat('d LLL yyyy');
+    const kw = (r.keywords||[]).map(k=>`<span style="display:inline-block;background:${highlighted?'#fff':'var(--stone)'};border-radius:10px;padding:1px 8px;font-size:10px;color:var(--ink-soft);margin-right:4px;">${esc(k)}</span>`).join('');
+    return `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:13px 0;${highlighted?'':'border-top:1px solid var(--stone-line);'}">
+      <div>
+        <div style="font-size:13.5px;font-weight:600;">${esc(r.topic||'Untitled session')}</div>
+        <div style="font-size:11.5px;color:var(--ink-soft);margin-top:2px;">${r.presenter ? esc(r.presenter)+' · ' : ''}${esc(r.division_name)} · ${dateLabel}</div>
+        <div style="margin-top:6px;">${kw}</div>
+      </div>
+      <a href="${esc(r.recording_url)}" target="_blank" rel="noopener" style="flex:none;display:inline-flex;align-items:center;gap:6px;background:${highlighted?'var(--brass)':'var(--night)'};color:${highlighted?'var(--night-deep)':'#fff'};border-radius:5px;padding:7px 14px;font-size:12px;font-weight:600;text-decoration:none;">
+        <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Watch
+      </a>
+    </div>`;
+  }
+
   async function renderLibrary(){
     const box = document.getElementById('libraryMount');
     if(!box) return;
@@ -833,11 +850,28 @@
         <h2 class="serif" style="font-size:17px;font-weight:500;margin:0 0 4px;color:#fff;">Library</h2>
         <p style="font-size:12px;color:#B7CFC9;margin:0;">Every talk across the organisation with a recording attached.</p>
       </div>
+      <div id="libRecent"></div>
       <div style="border:1px solid var(--stone-line);border-radius:6px;background:var(--card);padding:16px 18px;">
+        <div style="font-size:11px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.03em;margin-bottom:8px;">All recordings</div>
         <input type="text" id="libSearch" placeholder="Search by title, presenter, or keyword…" style="width:100%;max-width:420px;padding:9px 11px;border:1px solid var(--stone-line);border-radius:5px;font-size:13.5px;font-family:inherit;box-sizing:border-box;margin-bottom:4px;">
         <div id="libResults" class="loading">Loading…</div>
       </div>
     `;
+
+    // 3 most recently ADDED recordings — sorted by when the recording was
+    // attached, not the date of the talk itself, so a backfilled recording
+    // for an old session still surfaces here.
+    (async ()=>{
+      const recentEl = document.getElementById('libRecent');
+      const { data: recent, error: recentErr } = await sb.rpc('get_recent_library_items');
+      if(recentErr || !recent || !recent.length){ recentEl.innerHTML = ''; return; }
+      recentEl.innerHTML = `
+        <div style="border:1px solid var(--brass);border-radius:6px;background:#FBF6EA;padding:16px 18px;margin-bottom:14px;">
+          <div style="font-size:11px;color:#8A6A24;text-transform:uppercase;letter-spacing:0.03em;font-weight:700;margin-bottom:4px;">Most recently added</div>
+          ${recent.map(r=> libraryItemHtml(r, true)).join('<div style="border-top:1px solid #E6D9B8;"></div>')}
+        </div>`;
+    })();
+
     async function runSearch(q){
       const results = document.getElementById('libResults');
       results.innerHTML = `<div class="loading">Searching…</div>`;
@@ -845,20 +879,7 @@
       if(error){ results.innerHTML = `<div class="err">${esc(error.message)}</div>`; return; }
       if(!data || !data.length){ results.innerHTML = `<div class="empty">No recordings found${q ? ' for "'+esc(q)+'"' : ' yet'}.</div>`; return; }
       results.className = '';
-      results.innerHTML = data.map(r=>{
-        const dateLabel = DateTime.fromISO(r.session_date).toFormat('d LLL yyyy');
-        const kw = (r.keywords||[]).map(k=>`<span style="display:inline-block;background:var(--stone);border-radius:10px;padding:1px 8px;font-size:10px;color:var(--ink-soft);margin-right:4px;">${esc(k)}</span>`).join('');
-        return `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:13px 0;border-top:1px solid var(--stone-line);">
-          <div>
-            <div style="font-size:13.5px;font-weight:600;">${esc(r.topic||'Untitled session')}</div>
-            <div style="font-size:11.5px;color:var(--ink-soft);margin-top:2px;">${r.presenter ? esc(r.presenter)+' · ' : ''}${esc(r.division_name)} · ${dateLabel}</div>
-            <div style="margin-top:6px;">${kw}</div>
-          </div>
-          <a href="${esc(r.recording_url)}" target="_blank" rel="noopener" style="flex:none;display:inline-flex;align-items:center;gap:6px;background:var(--night);color:#fff;border-radius:5px;padding:7px 14px;font-size:12px;font-weight:600;text-decoration:none;">
-            <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Watch
-          </a>
-        </div>`;
-      }).join('');
+      results.innerHTML = data.map(r=> libraryItemHtml(r, false)).join('');
     }
     let debounceTimer;
     document.getElementById('libSearch').addEventListener('input', e=>{
@@ -940,6 +961,79 @@
   }
 
   // ---------- Profile: your name, where you sit (read-only), and the contact toggle ----------
+  // Cascading level-by-level selector for changing your own position —
+  // only ever points at EXISTING nodes; creating new ones stays restricted
+  // to the domain-approved onboarding flow.
+  async function renderPositionEditor(orgId){
+    const editor = document.getElementById('pfPosEditor');
+    if(!editor) return;
+    editor.style.display = 'block';
+    editor.innerHTML = `<div class="loading" style="padding:10px 0;">Loading organisation structure…</div>`;
+
+    const { data: levels, error } = await sb.from('hierarchy_levels').select('id,level_index,name').eq('org_id', orgId).order('level_index');
+    if(error || !levels || !levels.length){ editor.innerHTML = `<div class="err">Could not load organisation structure.</div>`; return; }
+
+    const selectedIds = {}; // level.id -> node id chosen so far
+
+    async function renderLevelRow(levelIdx){
+      // Remove this level's row and anything after it (a change higher up invalidates lower selections).
+      levels.slice(levelIdx).forEach(l=> delete selectedIds[l.id]);
+      editor.querySelectorAll(`[data-level-row]`).forEach(row=>{
+        if(parseInt(row.dataset.levelRow,10) >= levelIdx) row.remove();
+      });
+      document.getElementById('posSaveRow')?.remove();
+
+      if(levelIdx >= levels.length){
+        // Every level has a selection — show the save action.
+        const deepestLevel = levels[levels.length-1];
+        const finalId = selectedIds[deepestLevel.id];
+        const saveRow = document.createElement('div');
+        saveRow.id = 'posSaveRow';
+        saveRow.style.marginTop = '10px';
+        saveRow.innerHTML = `
+          <div id="posErr" style="font-size:11px;color:var(--ember);min-height:14px;margin-bottom:5px;"></div>
+          <button class="btn brass" id="posSaveBtn" style="font-size:12px;padding:7px 14px;">Move to this position</button>
+        `;
+        editor.appendChild(saveRow);
+        document.getElementById('posSaveBtn').onclick = async ()=>{
+          const btn = document.getElementById('posSaveBtn'); btn.disabled = true; btn.textContent = 'Saving…';
+          const { error: posErr } = await sb.rpc('update_own_position', { p_node_id: finalId });
+          if(posErr){ document.getElementById('posErr').textContent = posErr.message; btn.disabled = false; btn.textContent = 'Move to this position'; return; }
+          window.__refreshDashboard();
+        };
+        return;
+      }
+
+      const level = levels[levelIdx];
+      const parentLevel = levelIdx > 0 ? levels[levelIdx-1] : null;
+      const parentId = parentLevel ? selectedIds[parentLevel.id] : null;
+      if(parentLevel && !parentId) return; // wait until parent is chosen
+
+      let query = sb.from('hierarchy_nodes').select('id,name').eq('org_id', orgId).eq('level_id', level.id);
+      query = parentId ? query.eq('parent_id', parentId) : query.is('parent_id', null);
+      const { data: options } = await query.order('name');
+
+      const row = document.createElement('div');
+      row.dataset.levelRow = levelIdx;
+      row.style.marginBottom = '8px';
+      row.innerHTML = `
+        <label style="display:block;font-size:10.5px;color:var(--ink-soft);margin-bottom:3px;">${esc(level.name)}</label>
+        <select style="width:100%;padding:7px 9px;border:1px solid var(--stone-line);border-radius:5px;font-family:inherit;font-size:12.5px;">
+          <option value="">Select ${esc(level.name)}…</option>
+          ${(options||[]).map(o=>`<option value="${o.id}">${esc(o.name)}</option>`).join('')}
+        </select>
+      `;
+      editor.appendChild(row);
+      row.querySelector('select').addEventListener('change', function(){
+        selectedIds[level.id] = this.value || null;
+        renderLevelRow(levelIdx + 1);
+      });
+    }
+
+    editor.innerHTML = '';
+    await renderLevelRow(0);
+  }
+
   function renderProfile(profile, nodePath){
     const box = document.getElementById('profileMount');
     if(!box) return;
@@ -966,7 +1060,8 @@
           <div style="margin-bottom:16px;">
             <label style="display:block;font-size:11px;color:var(--ink-soft);margin-bottom:4px;">Where you sit</label>
             <div style="font-size:13px;color:var(--ink);">${esc(breadcrumb)}</div>
-            <div style="font-size:11px;color:var(--ink-soft);margin-top:3px;">To change this, contact an organisational-email member — position editing isn't self-service yet.</div>
+            <button id="pfChangePosBtn" style="background:none;border:none;color:var(--brass);font-size:11.5px;text-decoration:underline;cursor:pointer;padding:4px 0 0;">Change position</button>
+            <div id="pfPosEditor" style="display:none;margin-top:10px;padding:12px;background:var(--stone);border-radius:5px;"></div>
           </div>
 
           <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;margin-bottom:14px;">
@@ -987,6 +1082,8 @@
           <span id="pfSavedNote" style="font-size:12px;color:#2E6B44;margin-left:10px;display:none;">Saved</span>
       </div>
     `;
+
+    document.getElementById('pfChangePosBtn').onclick = ()=> renderPositionEditor(profile.org_id);
 
     document.getElementById('pfContact').addEventListener('change', function(){
       document.getElementById('pfTrack').style.background = this.checked ? '#4B7B4E' : '#D9CFB7';
