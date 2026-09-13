@@ -49,10 +49,22 @@
   .loading, .err, .empty{ padding:30px; text-align:center; color:var(--ink-soft); font-size:13px; }
   .err{ color:var(--ember); }
   .version-tag{ position:fixed; bottom:6px; left:6px; font-size:10px; color:#B7B0A0; font-family:ui-monospace,monospace; z-index:100; background:rgba(255,255,255,0.7); padding:1px 5px; border-radius:3px; }
+
+  /* icon badges — in-person / video status, with instant CSS tooltips */
+  .icon-badge{ display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:5px; flex:none; position:relative; }
+  .icon-badge svg{ width:13px; height:13px; }
+  .icon-badge.active{ color:#8A6A24; background:#F2E9D3; }
+  .icon-badge.inactive{ color:#B7B0A0; background:#EAE5D8; }
+  .icon-badge[data-tip]:hover::after{
+    content:attr(data-tip); position:absolute; top:calc(100% + 6px); left:50%; transform:translateX(-50%);
+    background:#14262B; color:#fff; font-size:10.5px; font-weight:600; padding:4px 8px; border-radius:4px;
+    white-space:nowrap; pointer-events:none; z-index:50; box-shadow:0 3px 8px rgba(0,0,0,0.25);
+  }
+  .icon-badge-row{ display:inline-flex; gap:6px; align-items:center; vertical-align:middle; }
 </style>
 </head>
 <body>
-  <div class="version-tag">dashboard v10</div>
+  <div class="version-tag">dashboard v12</div>
   <div class="shell">
     <div class="side" id="sideMount">
       <div class="side-brand">
@@ -86,6 +98,17 @@
   const sideMount = document.getElementById('sideMount');
 
   function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+  function videoBadge(hasLink){
+    const cls = hasLink ? 'active' : 'inactive';
+    const tip = hasLink ? 'Video Conference' : 'No video conference';
+    return `<span class="icon-badge ${cls}" data-tip="${tip}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 10.5V7a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-3.5l4 4v-11l-4 4z"/></svg></span>`;
+  }
+  function inPersonBadge(isInPerson){
+    const cls = isInPerson ? 'active' : 'inactive';
+    const tip = isInPerson ? 'In Person Meeting' : 'No in-person option';
+    return `<span class="icon-badge ${cls}" data-tip="${tip}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11.2a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.8" r="2.4"/></svg></span>`;
+  }
 
   // ---------- boot ----------
   async function boot(){
@@ -419,16 +442,18 @@
       ? `<a href="${esc(session.recording_url)}" target="_blank" rel="noopener" style="font-size:11px;color:#2E6B44;font-weight:600;text-decoration:none;">▶ Watch recording</a>`
       : (isApproved ? `<button id="recAddBtn" style="background:none;border:none;color:var(--ink-soft);font-size:11px;text-decoration:underline;cursor:pointer;padding:0;">+ Add recording</button>` : '');
     box.innerHTML = `
-      <div style="border:1px solid var(--stone-line);border-radius:6px;padding:14px 16px;background:var(--card);">
+      <div style="border:1px solid var(--stone-line);border-radius:6px;padding:16px 18px;background:var(--card);">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
           <div>
-            <div style="font-size:13.5px;font-weight:600;">${esc(session.topic)}${jointHtml}</div>
-            <div style="font-size:12px;color:var(--ink-soft);margin-top:2px;">${session.presenter ? esc(session.presenter)+' · ' : ''}${session.in_person ? 'In person' : ''}${session.in_person && session.video_url ? ' & ' : ''}${session.video_url ? 'Online' : ''}</div>
-            <div style="margin-top:6px;">${kwHtml}</div>
+            <div style="font-size:11px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.03em;margin-bottom:4px;">This week's topic</div>
+            <div style="font-size:14px;font-weight:600;display:flex;align-items:center;flex-wrap:wrap;gap:2px;">${esc(session.topic)}${jointHtml}</div>
+            <div style="font-size:12px;color:var(--ink-soft);margin-top:4px;">${session.presenter ? esc(session.presenter) : ''}</div>
+            <div class="icon-badge-row" style="margin-top:8px;">${inPersonBadge(!!session.in_person)}${videoBadge(!!session.video_url)}</div>
+            <div style="margin-top:8px;">${kwHtml}</div>
           </div>
           ${isApproved ? '<button class="btn ghost" id="sessEditBtn" style="border:1px solid var(--stone-line);color:var(--ink);flex:none;">Edit</button>' : ''}
         </div>
-        ${recHtml ? `<div style="margin-top:9px;">${recHtml}</div>` : ''}
+        ${recHtml ? `<div style="margin-top:10px;">${recHtml}</div>` : ''}
       </div>`;
     if(isApproved) document.getElementById('sessEditBtn').onclick = ()=> openSessionModal(nodeId, orgLabel, isoDate, session, onSaved);
     if(isApproved && !session.recording_url){
@@ -636,11 +661,11 @@
     if(!deepest || !own){ box.innerHTML = ''; return; }
 
     box.innerHTML = `
-      <div style="margin-top:26px;">
-        <h2 class="serif" style="font-size:17px;font-weight:500;margin:0 0 4px;">Concurrent Meetings</h2>
-        <p style="font-size:12px;color:var(--ink-soft);margin:0 0 12px;">Other groups at the same level as yours, meeting at an overlapping time — converted to your local time.</p>
-        <div id="concurrentList" class="loading">Checking for overlaps…</div>
+      <div style="margin-top:26px;background:var(--night);border-radius:6px;padding:16px 20px;margin-bottom:14px;">
+        <h2 class="serif" style="font-size:17px;font-weight:500;margin:0 0 4px;color:#fff;">Concurrent Meetings</h2>
+        <p style="font-size:12px;color:#B7CFC9;margin:0;">Other groups at the same level as yours, meeting at an overlapping time — converted to your local time.</p>
       </div>
+      <div id="concurrentList" class="loading">Checking for overlaps…</div>
       <div id="sisterMount" style="margin-top:26px;"></div>
     `;
     const onDone = ()=> renderConcurrentMeetings(nodePath, own);
@@ -737,10 +762,12 @@
     const box = document.getElementById('libraryMount');
     if(!box) return;
     box.innerHTML = `
-      <div style="margin-top:26px;">
-        <h2 class="serif" style="font-size:17px;font-weight:500;margin:0 0 4px;">Library</h2>
-        <p style="font-size:12px;color:var(--ink-soft);margin:0 0 12px;">Every talk across the organisation with a recording attached.</p>
-        <input type="text" id="libSearch" placeholder="Search by title, presenter, or keyword…" style="width:100%;max-width:420px;padding:9px 11px;border:1px solid var(--stone-line);border-radius:5px;font-size:13.5px;font-family:inherit;box-sizing:border-box;margin-bottom:12px;">
+      <div style="margin-top:26px;background:var(--night);border-radius:6px;padding:16px 20px;margin-bottom:14px;">
+        <h2 class="serif" style="font-size:17px;font-weight:500;margin:0 0 4px;color:#fff;">Library</h2>
+        <p style="font-size:12px;color:#B7CFC9;margin:0;">Every talk across the organisation with a recording attached.</p>
+      </div>
+      <div style="border:1px solid var(--stone-line);border-radius:6px;background:var(--card);padding:16px 18px;">
+        <input type="text" id="libSearch" placeholder="Search by title, presenter, or keyword…" style="width:100%;max-width:420px;padding:9px 11px;border:1px solid var(--stone-line);border-radius:5px;font-size:13.5px;font-family:inherit;box-sizing:border-box;margin-bottom:4px;">
         <div id="libResults" class="loading">Loading…</div>
       </div>
     `;
@@ -754,13 +781,15 @@
       results.innerHTML = data.map(r=>{
         const dateLabel = DateTime.fromISO(r.session_date).toFormat('d LLL yyyy');
         const kw = (r.keywords||[]).map(k=>`<span style="display:inline-block;background:var(--stone);border-radius:10px;padding:1px 8px;font-size:10px;color:var(--ink-soft);margin-right:4px;">${esc(k)}</span>`).join('');
-        return `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--stone-line);">
+        return `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:13px 0;border-top:1px solid var(--stone-line);">
           <div>
             <div style="font-size:13.5px;font-weight:600;">${esc(r.topic||'Untitled session')}</div>
             <div style="font-size:11.5px;color:var(--ink-soft);margin-top:2px;">${r.presenter ? esc(r.presenter)+' · ' : ''}${esc(r.division_name)} · ${dateLabel}</div>
-            <div style="margin-top:5px;">${kw}</div>
+            <div style="margin-top:6px;">${kw}</div>
           </div>
-          <a href="${esc(r.recording_url)}" target="_blank" rel="noopener" style="flex:none;background:var(--night);color:#fff;border-radius:5px;padding:7px 13px;font-size:12px;font-weight:600;text-decoration:none;">Watch ↗</a>
+          <a href="${esc(r.recording_url)}" target="_blank" rel="noopener" style="flex:none;display:inline-flex;align-items:center;gap:6px;background:var(--night);color:#fff;border-radius:5px;padding:7px 14px;font-size:12px;font-weight:600;text-decoration:none;">
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Watch
+          </a>
         </div>`;
       }).join('');
     }
@@ -777,14 +806,18 @@
     const box = document.getElementById('keywordMount');
     if(!box) return;
     box.innerHTML = `
-      <div style="margin-top:26px;">
-        <h2 class="serif" style="font-size:17px;font-weight:500;margin:0 0 4px;">Keyword alerts</h2>
-        <p style="font-size:12px;color:var(--ink-soft);margin:0 0 12px;">Enter keywords for topics you're interested in — we'll show upcoming talks that match, and (once email is wired up) notify you as new ones appear.</p>
-        <div id="kwChips" style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:8px;"></div>
-        <div style="display:flex;gap:6px;max-width:360px;margin-bottom:16px;">
+      <div style="margin-top:26px;background:var(--night);border-radius:6px;padding:16px 20px;margin-bottom:14px;">
+        <h2 class="serif" style="font-size:17px;font-weight:500;margin:0 0 4px;color:#fff;">Keyword alerts</h2>
+        <p style="font-size:12px;color:#B7CFC9;margin:0;">Enter keywords for topics you're interested in — we'll show matching talks, and email you as new ones appear.</p>
+      </div>
+      <div style="border:1px solid var(--stone-line);border-radius:6px;background:var(--card);padding:16px 18px;margin-bottom:14px;">
+        <div id="kwChips" style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:10px;"></div>
+        <div style="display:flex;gap:6px;max-width:360px;">
           <input type="text" id="kwInput" placeholder="Add a keyword…" style="flex:1;padding:8px 10px;border:1px solid var(--stone-line);border-radius:5px;font-family:inherit;font-size:13px;">
           <button id="kwAddBtn" style="background:var(--brass);color:var(--night-deep);border:none;border-radius:5px;padding:0 14px;font-size:12.5px;font-weight:600;cursor:pointer;">Add</button>
         </div>
+      </div>
+      <div style="border:1px solid var(--stone-line);border-radius:6px;background:var(--card);padding:16px 18px;">
         <div id="kwResults" class="loading">Loading…</div>
       </div>
     `;
@@ -813,12 +846,13 @@
       results.className = '';
       results.innerHTML = matches.map(m=>{
         const dateLabel = DateTime.fromISO(m.session_date).toFormat('d LLL yyyy');
-        return `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--stone-line);">
+        return `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:13px 0;border-top:1px solid var(--stone-line);">
           <div>
             <div style="font-size:13.5px;font-weight:600;">${esc(m.topic)}</div>
-            <div style="font-size:11.5px;color:var(--ink-soft);margin-top:2px;">${m.presenter ? esc(m.presenter)+' · ' : ''}${esc(m.division_name)} · ${dateLabel} · matches "${esc(m.matched_keyword)}"</div>
+            <div style="font-size:11.5px;color:var(--ink-soft);margin-top:2px;">${m.presenter ? esc(m.presenter)+' · ' : ''}${esc(m.division_name)} · ${dateLabel}</div>
+            <div style="margin-top:5px;"><span style="display:inline-block;background:#F2E4C6;color:#8A6A24;border-radius:10px;padding:2px 8px;font-size:10.5px;font-weight:600;">matches "${esc(m.matched_keyword)}"</span></div>
           </div>
-          ${m.video_url ? `<a href="${esc(m.video_url)}" target="_blank" rel="noopener" style="flex:none;background:var(--night);color:#fff;border-radius:5px;padding:7px 13px;font-size:12px;font-weight:600;text-decoration:none;">Join ↗</a>` : ''}
+          ${m.video_url ? `<a href="${esc(m.video_url)}" target="_blank" rel="noopener" style="flex:none;display:inline-flex;align-items:center;gap:6px;background:var(--brass);color:var(--night-deep);border-radius:5px;padding:7px 14px;font-size:12px;font-weight:600;text-decoration:none;"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 10.5V7a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-3.5l4 4v-11l-4 4z"/></svg>Join</a>` : ''}
         </div>`;
       }).join('');
     }
@@ -845,11 +879,12 @@
     const breadcrumb = nodePath.map(n=>n.name).join(' → ');
 
     box.innerHTML = `
-      <div style="margin-top:26px;">
-        <h2 class="serif" style="font-size:17px;font-weight:500;margin:0 0 4px;">Profile</h2>
-        <p style="font-size:12px;color:var(--ink-soft);margin:0 0 14px;">Your details, and how other groups can reach you.</p>
+      <div style="margin-top:26px;background:var(--night);border-radius:6px;padding:16px 20px;margin-bottom:14px;">
+        <h2 class="serif" style="font-size:17px;font-weight:500;margin:0 0 4px;color:#fff;">Profile</h2>
+        <p style="font-size:12px;color:#B7CFC9;margin:0;">Your details, and how other groups can reach you.</p>
+      </div>
 
-        <div style="border:1px solid var(--stone-line);border-radius:6px;padding:16px 18px;background:var(--card);max-width:480px;">
+      <div style="border:1px solid var(--stone-line);border-radius:6px;padding:16px 18px;background:var(--card);max-width:480px;">
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
             <div>
               <label style="display:block;font-size:11px;color:var(--ink-soft);margin-bottom:5px;">First name</label>
@@ -883,7 +918,6 @@
           <div id="pfErr" style="font-size:11.5px;color:var(--ember);min-height:14px;margin-bottom:6px;"></div>
           <button class="btn brass" id="pfSave">Save</button>
           <span id="pfSavedNote" style="font-size:12px;color:#2E6B44;margin-left:10px;display:none;">Saved</span>
-        </div>
       </div>
     `;
 
