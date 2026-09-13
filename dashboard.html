@@ -69,7 +69,7 @@
 </style>
 </head>
 <body>
-  <div class="version-tag">dashboard v17</div>
+  <div class="version-tag">dashboard v18</div>
   <div class="shell">
     <div class="side" id="sideMount">
       <div class="side-brand">
@@ -149,6 +149,8 @@
       ]);
 
       renderSidebar(org ? org.name : '', nodePath, profile);
+      window.__nodePath = nodePath;
+      window.__isApproved = !!isApproved;
       async function refreshAll(){
         const own = await renderMyMeeting(profile, nodePath, !!isApproved);
         await renderConcurrentMeetings(nodePath, own);
@@ -213,7 +215,7 @@
       <div class="side-foot">
         Signed in as ${esc(profile.first_name)} ${esc(profile.last_name)}
         <a class="signout-link" id="signOutLink">Sign out</a>
-        <div style="margin-top:10px;opacity:0.5;">dashboard.html — v17</div>
+        <div style="margin-top:10px;opacity:0.5;">dashboard.html — v18</div>
       </div>
     `;
     const VIEWS = ['dashboardMount','otherEventsMount','libraryMount','keywordMount','profileMount','aboutMount'];
@@ -1133,17 +1135,130 @@
     `;
   }
 
-  // ---------- Other Events: placeholder for now, real version coming next ----------
-  function renderOtherEvents(){
+  // ---------- Other Events: one-off sessions from ancestor nodes (Region/State/National) ----------
+  async function renderOtherEvents(){
     const box = document.getElementById('otherEventsMount');
     if(!box) return;
+    const nodePath = window.__nodePath || [];
+    const isApproved = !!window.__isApproved;
+    const deepest = nodePath.length ? nodePath[nodePath.length-1] : null;
+    // Ancestor nodes only — Region, State, National — not the viewer's own division.
+    const ancestorNodes = nodePath.slice(0, -1);
+
     box.innerHTML = `
-      <div style="background:var(--night);border-radius:6px;padding:16px 20px;margin-bottom:14px;">
-        <h2 class="serif" style="font-size:17px;font-weight:500;margin:0 0 4px;color:#fff;">Other Events</h2>
-        <p style="font-size:12px;color:#B7CFC9;margin:0;">One-off sessions from your Region, State and National bodies.</p>
+      <div style="background:var(--night);border-radius:6px;padding:16px 20px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+        <div>
+          <h2 class="serif" style="font-size:17px;font-weight:500;margin:0 0 4px;color:#fff;">Other Events</h2>
+          <p style="font-size:12px;color:#B7CFC9;margin:0;">One-off sessions from your Region, State and National bodies.</p>
+        </div>
+        ${isApproved && ancestorNodes.length ? '<button class="btn brass" id="addEventBtn">+ Add event</button>' : ''}
       </div>
-      <div class="empty">This is coming in the next build pass — the database table exists, but reading/writing to it isn't wired up yet.</div>
+      <div id="eventsList" class="loading">Loading…</div>
     `;
+
+    if(isApproved && ancestorNodes.length){
+      document.getElementById('addEventBtn').onclick = ()=> openEventModal(ancestorNodes, deepest, ()=> renderOtherEvents());
+    }
+
+    const listEl = document.getElementById('eventsList');
+    if(!ancestorNodes.length){
+      listEl.innerHTML = `<div class="empty">Your group is at the top of the hierarchy, so there's no higher-level body to show events from.</div>`;
+      return;
+    }
+
+    const { data: events, error } = await sb.rpc('get_special_events_for_nodes', { p_node_ids: ancestorNodes.map(n=>n.id) });
+    if(error){ listEl.innerHTML = `<div class="err">${esc(error.message)}</div>`; return; }
+    if(!events || !events.length){ listEl.innerHTML = `<div class="empty">No upcoming events from your Region, State or National body yet.</div>`; return; }
+
+    listEl.innerHTML = events.map(ev=>{
+      const dateLabel = DateTime.fromISO(ev.event_date).toFormat('cccc d LLL yyyy');
+      const timeLabel = ev.start_time ? `${ev.start_time.slice(0,5)}${ev.end_time ? '–'+ev.end_time.slice(0,5) : ''} (${ev.timezone})` : '';
+      const kw = (ev.keywords||[]).map(k=>`<span style="display:inline-block;background:var(--stone);border-radius:10px;padding:1px 8px;font-size:10px;color:var(--ink-soft);margin-right:4px;">${esc(k)}</span>`).join('');
+      return `
+        <div style="background:var(--card);border:1px solid var(--stone-line);border-radius:6px;padding:16px 18px;margin-bottom:10px;">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+            <div>
+              <div style="font-size:10.5px;color:var(--brass);font-weight:700;text-transform:uppercase;margin-bottom:3px;">${esc(ev.division_name)}</div>
+              <div style="font-size:14px;font-weight:600;">${esc(ev.title)}</div>
+              <div style="font-size:12px;color:var(--ink-soft);margin-top:3px;">${esc(dateLabel)}${timeLabel ? ' · '+esc(timeLabel) : ''}</div>
+              ${ev.address ? `<div style="font-size:12px;color:var(--ink-soft);margin-top:2px;">${esc(ev.address)}</div>` : ''}
+              <div style="margin-top:6px;">${kw}</div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;flex:none;">
+              ${ev.video_url ? `<a href="${esc(ev.video_url)}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;background:var(--night);color:#fff;border-radius:5px;padding:7px 14px;font-size:12px;font-weight:600;text-decoration:none;"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 10.5V7a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-3.5l4 4v-11l-4 4z"/></svg>Join</a>` : ''}
+              ${ev.access_code ? `<div style="font-size:10.5px;color:var(--ink-soft);">Code: <b style="color:var(--ink);">${esc(ev.access_code)}</b></div>` : ''}
+              ${isApproved ? `<button data-del="${ev.id}" style="background:none;border:none;color:var(--ember);font-size:11px;text-decoration:underline;cursor:pointer;padding:0;">Remove</button>` : ''}
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+
+    if(isApproved){
+      listEl.querySelectorAll('[data-del]').forEach(btn=>{
+        btn.onclick = async ()=>{
+          if(!confirm('Remove this event for everyone who can see it?')) return;
+          const { error: delErr } = await sb.rpc('delete_special_event', { p_id: btn.dataset.del });
+          if(delErr){ alert(delErr.message); return; }
+          renderOtherEvents();
+        };
+      });
+    }
+  }
+
+  function openEventModal(ancestorNodes, deepest, onSaved){
+    const back = document.createElement('div');
+    back.style.cssText = 'position:fixed;inset:0;background:rgba(20,20,18,0.45);display:flex;align-items:center;justify-content:center;z-index:60;padding:16px;';
+    back.innerHTML = `
+      <div style="background:#fff;border-radius:8px;padding:22px 24px;max-width:440px;width:100%;max-height:86vh;overflow:auto;">
+        <h3 class="serif" style="margin:0 0 14px;font-size:16px;">Add an event</h3>
+        <label style="display:block;font-size:11px;color:var(--ink-soft);margin-bottom:4px;">Hosted by</label>
+        <select id="evNode" style="width:100%;padding:8px 10px;border:1px solid var(--stone-line);border-radius:5px;font-family:inherit;font-size:13px;margin-bottom:10px;box-sizing:border-box;">
+          ${ancestorNodes.map(n=>`<option value="${n.id}">${esc(n.name)}</option>`).join('')}
+        </select>
+        <input type="text" id="evTitle" placeholder="Event title" style="width:100%;padding:8px 10px;border:1px solid var(--stone-line);border-radius:5px;font-family:inherit;font-size:13px;margin-bottom:10px;box-sizing:border-box;">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px;">
+          <input type="date" id="evDate" style="padding:8px 10px;border:1px solid var(--stone-line);border-radius:5px;font-family:inherit;font-size:13px;">
+          <input type="time" id="evStart" style="padding:8px 10px;border:1px solid var(--stone-line);border-radius:5px;font-family:inherit;font-size:13px;">
+          <input type="time" id="evEnd" style="padding:8px 10px;border:1px solid var(--stone-line);border-radius:5px;font-family:inherit;font-size:13px;">
+        </div>
+        <select id="evTz" style="width:100%;padding:8px 10px;border:1px solid var(--stone-line);border-radius:5px;font-family:inherit;font-size:13px;margin-bottom:10px;">
+          ${TIMEZONES.map(t=>`<option ${t==='Australia/Melbourne' ? 'selected':''}>${t}</option>`).join('')}
+        </select>
+        <input type="text" id="evAddress" placeholder="Address (optional)" style="width:100%;padding:8px 10px;border:1px solid var(--stone-line);border-radius:5px;font-family:inherit;font-size:13px;margin-bottom:10px;box-sizing:border-box;">
+        <input type="text" id="evVideo" placeholder="Video link (optional)" style="width:100%;padding:8px 10px;border:1px solid var(--stone-line);border-radius:5px;font-family:inherit;font-size:13px;margin-bottom:10px;box-sizing:border-box;">
+        <input type="text" id="evKeywords" placeholder="Keywords, comma separated" style="width:100%;padding:8px 10px;border:1px solid var(--stone-line);border-radius:5px;font-family:inherit;font-size:13px;margin-bottom:10px;box-sizing:border-box;">
+        <div id="evErr" style="font-size:11.5px;color:var(--ember);min-height:14px;margin-bottom:6px;"></div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;">
+          <button class="btn ghost" id="evCancel" style="border:1px solid var(--stone-line);color:var(--ink);">Cancel</button>
+          <button class="btn brass" id="evSave">Save</button>
+        </div>
+      </div>`;
+    document.body.appendChild(back);
+    back.addEventListener('click', e=>{ if(e.target===back) back.remove(); });
+    back.querySelector('#evCancel').onclick = ()=> back.remove();
+    back.querySelector('#evSave').onclick = async ()=>{
+      const btn = back.querySelector('#evSave'); btn.disabled = true; btn.textContent = 'Saving…';
+      const title = back.querySelector('#evTitle').value.trim();
+      const date = back.querySelector('#evDate').value;
+      if(!title || !date){
+        back.querySelector('#evErr').textContent = 'Title and date are required.';
+        btn.disabled = false; btn.textContent = 'Save'; return;
+      }
+      const { error } = await sb.rpc('save_special_event', {
+        p_node_id: back.querySelector('#evNode').value,
+        p_title: title,
+        p_event_date: date,
+        p_start_time: back.querySelector('#evStart').value || null,
+        p_end_time: back.querySelector('#evEnd').value || null,
+        p_timezone: back.querySelector('#evTz').value,
+        p_address: back.querySelector('#evAddress').value.trim() || null,
+        p_video_url: back.querySelector('#evVideo').value.trim() || null,
+        p_keywords: back.querySelector('#evKeywords').value.split(',').map(x=>x.trim()).filter(Boolean)
+      });
+      if(error){ back.querySelector('#evErr').textContent = error.message; btn.disabled=false; btn.textContent='Save'; return; }
+      back.remove();
+      onSaved();
+    };
   }
 
   // ---------- Month browsing: every meeting-date in a given month, past or future ----------
