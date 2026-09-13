@@ -21,6 +21,7 @@
   .nav a{ display:flex; align-items:center; padding:8px 10px; border-radius:4px; font-size:13px; text-decoration:none; color:#C9CFC9; cursor:pointer; }
   .nav a.active{ background:rgba(255,255,255,0.08); color:#fff; font-weight:600; }
   .nav a:hover{ color:#fff; }
+  .no-meeting-card{ background:repeating-linear-gradient(135deg, var(--card), var(--card) 8px, #F1EEE6 8px, #F1EEE6 16px) !important; border-style:dashed !important; }
   button{ font-family:inherit; cursor:pointer; }
 
   .shell{ display:grid; grid-template-columns:216px 1fr; min-height:100vh; }
@@ -68,7 +69,7 @@
 </style>
 </head>
 <body>
-  <div class="version-tag">dashboard v14</div>
+  <div class="version-tag">dashboard v15</div>
   <div class="shell">
     <div class="side" id="sideMount">
       <div class="side-brand">
@@ -102,6 +103,18 @@
   const sideMount = document.getElementById('sideMount');
 
   function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+  function markSvg(size){
+    return `<svg viewBox="0 0 120 120" width="${size}" height="${size}" style="flex:none;">
+      <path d="M 107.55 75.45 Q 85.02 75.63 68.56 62.78" stroke="#E3C077" stroke-width="1.4" stroke-linecap="round" fill="none" opacity="0.55"/>
+      <path d="M 66.12 103.57 Q 68.19 85.20 61.25 68.91" stroke="#E3C077" stroke-width="2.2" stroke-linecap="round" fill="none" opacity="0.8"/>
+      <path d="M 27.37 101.76 Q 34.92 78.22 54.46 67.09" stroke="#E3C077" stroke-width="1.1" stroke-linecap="round" fill="none" opacity="0.4"/>
+      <path d="M 13.06 57.54 Q 32.11 62.44 51.01 59.53" stroke="#E3C077" stroke-width="3.0" stroke-linecap="round" fill="none" opacity="1.0"/>
+      <path d="M 30.32 12.51 Q 48.88 29.46 55.23 52.37" stroke="#E3C077" stroke-width="1.6" stroke-linecap="round" fill="none" opacity="0.6"/>
+      <path d="M 81.13 20.27 Q 67.44 34.05 64.23 52.05" stroke="#E3C077" stroke-width="2.4" stroke-linecap="round" fill="none" opacity="0.85"/>
+      <circle cx="60" cy="60" r="7" fill="#C99A3E"/>
+    </svg>`;
+  }
 
   function videoBadge(hasLink){
     const cls = hasLink ? 'active' : 'inactive';
@@ -200,7 +213,7 @@
       <div class="side-foot">
         Signed in as ${esc(profile.first_name)} ${esc(profile.last_name)}
         <a class="signout-link" id="signOutLink">Sign out</a>
-        <div style="margin-top:10px;opacity:0.5;">dashboard.html — v14</div>
+        <div style="margin-top:10px;opacity:0.5;">dashboard.html — v15</div>
       </div>
     `;
     const VIEWS = ['dashboardMount','otherEventsMount','libraryMount','keywordMount','profileMount','aboutMount'];
@@ -408,11 +421,14 @@
 
     mount.innerHTML = `
       <div class="next-card">
-        <div>
-          <div class="unit-title serif">${esc(orgLabel)}</div>
-          <div class="lbl">Your group's next meeting</div>
-          <div class="when serif">${esc(whenLabel)}</div>
-          <div class="where">${esc(meeting.address || 'No address on file')} · ${esc(meeting.frequency)}</div>
+        <div style="display:flex;align-items:center;gap:14px;">
+          ${markSvg(34)}
+          <div>
+            <div class="unit-title serif">${esc(orgLabel)}</div>
+            <div class="lbl">Your group's next meeting</div>
+            <div class="when serif">${esc(whenLabel)}</div>
+            <div class="where">${esc(meeting.address || 'No address on file')} · ${esc(meeting.frequency)}</div>
+          </div>
         </div>
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
           <a class="btn brass" href="${href}" download="${summary.replace(/[^a-z0-9]+/gi,'-')}.ics">Add to calendar</a>
@@ -695,9 +711,12 @@
     if(!deepest || !own){ box.innerHTML = ''; return; }
 
     box.innerHTML = `
-      <div style="margin-top:26px;background:var(--night);border-radius:6px;padding:16px 20px;margin-bottom:14px;">
-        <h2 class="serif" style="font-size:17px;font-weight:500;margin:0 0 4px;color:#fff;">Concurrent Meetings</h2>
-        <p style="font-size:12px;color:#B7CFC9;margin:0;">Other groups at the same level as yours, meeting at an overlapping time — converted to your local time.</p>
+      <div style="margin-top:26px;background:var(--night);border-radius:6px;padding:18px 24px;margin-bottom:14px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;justify-content:space-between;">
+        <div style="display:flex;align-items:center;gap:14px;">
+          ${markSvg(38)}
+          <h2 class="serif" style="font-size:19px;font-weight:500;margin:0;color:#fff;">Concurrent Meetings</h2>
+        </div>
+        <p style="font-size:12px;color:#B7CFC9;margin:0;max-width:340px;text-align:right;">Other groups at the same level as yours, meeting at an overlapping time — converted to your local time.</p>
       </div>
       <div id="concurrentList" class="loading">Checking for overlaps…</div>
       <div id="sisterMount" style="margin-top:26px;"></div>
@@ -743,6 +762,21 @@
         });
         overlaps.sort((a,b)=> b.overlapMin - a.overlapMin);
 
+        // Check whether any of these peers has a session on their matching
+        // date that's jointly flagged with MY division specifically —
+        // gets a distinct purple treatment, matching the design mockup.
+        if(overlaps.length){
+          const { data: peerSessions } = await sb
+            .from('sessions')
+            .select('node_id, session_date, joint_with_node')
+            .in('node_id', overlaps.map(o=>o.id));
+          overlaps.forEach(o=>{
+            const targetDate = o.occ.start.toISODate();
+            const match = (peerSessions||[]).find(s=> s.node_id===o.id && s.session_date===targetDate);
+            o.isJointWithMe = !!(match && match.joint_with_node === deepest.id);
+          });
+        }
+
         if(!overlaps.length){
           listEl.innerHTML = `<div class="empty">No other groups at your level currently overlap with your meeting time.</div>`;
         } else {
@@ -766,8 +800,13 @@
             } else {
               actionHtml = `<span style="font-size:10.5px;color:var(--ink-soft);margin-top:6px;display:inline-block;">Declined</span>`;
             }
+            const jointBadge = o.isJointWithMe ? `<div style="font-size:10px;font-weight:700;color:#7C5CB8;margin-bottom:3px;">JOINT SESSION WITH YOU</div>` : '';
+            const cardStyle = o.isJointWithMe
+              ? 'flex:none;width:200px;background:#FAF7FE;border:1px solid #B7A0DE;border-radius:6px;padding:13px 14px;'
+              : 'flex:none;width:200px;background:var(--card);border:1px solid var(--stone-line);border-radius:6px;padding:13px 14px;';
             return `
-              <div style="flex:none;width:200px;background:var(--card);border:1px solid var(--stone-line);border-radius:6px;padding:13px 14px;">
+              <div style="${cardStyle}">
+                ${jointBadge}
                 <div style="font-size:12.5px;font-weight:600;margin-bottom:2px;">${esc(o.name)}
                   <span style="display:inline-block;background:#F2E4C6;color:#8A6A24;border-radius:10px;padding:1px 7px;font-size:10px;font-weight:600;margin-left:4px;">${o.overlapMin} min</span>
                 </div>
