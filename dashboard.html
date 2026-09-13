@@ -69,7 +69,7 @@
 </style>
 </head>
 <body>
-  <div class="version-tag">dashboard v16</div>
+  <div class="version-tag">dashboard v17</div>
   <div class="shell">
     <div class="side" id="sideMount">
       <div class="side-brand">
@@ -213,7 +213,7 @@
       <div class="side-foot">
         Signed in as ${esc(profile.first_name)} ${esc(profile.last_name)}
         <a class="signout-link" id="signOutLink">Sign out</a>
-        <div style="margin-top:10px;opacity:0.5;">dashboard.html — v16</div>
+        <div style="margin-top:10px;opacity:0.5;">dashboard.html — v17</div>
       </div>
     `;
     const VIEWS = ['dashboardMount','otherEventsMount','libraryMount','keywordMount','profileMount','aboutMount'];
@@ -268,6 +268,75 @@
       'END:VEVENT','END:VCALENDAR'
     ].join('\r\n');
     return 'data:text/calendar;charset=utf8,' + encodeURIComponent(lines);
+  }
+
+  // Bulk program download: one .ics file covering every upcoming meeting
+  // date over the next 6 months, using the real topic where one's been
+  // set and skipping any date flagged as no-meeting.
+  async function buildDivisionProgram(nodeId, orgLabel, meeting){
+    const btn = document.getElementById('programBtn');
+    if(btn){ btn.disabled = true; btn.textContent = 'Building…'; }
+    try{
+      const targetIsoWeekday = meeting.day_of_week === 0 ? 7 : meeting.day_of_week;
+      const [sh, sm] = meeting.start_time.split(':').map(Number);
+      const [eh, em] = meeting.end_time.split(':').map(Number);
+
+      const today = DateTime.now().setZone(meeting.timezone);
+      const horizon = today.plus({ months: 6 });
+
+      const dates = [];
+      let cursor = today.set({ hour: sh, minute: sm, second: 0, millisecond: 0 });
+      while(cursor.weekday !== targetIsoWeekday) cursor = cursor.plus({ days: 1 });
+      while(cursor <= horizon){
+        dates.push(cursor);
+        cursor = cursor.plus({ days: 7 });
+      }
+
+      if(!dates.length){
+        alert('No upcoming meeting dates found in the next 6 months.');
+        return;
+      }
+
+      const { data: sessions, error } = await sb.rpc('get_sessions_for_node', {
+        check_node_id: nodeId, from_date: dates[0].toISODate(), to_date: dates[dates.length-1].toISODate()
+      });
+      if(error){ alert('Could not build your program: ' + error.message); return; }
+      const byDate = {};
+      (sessions||[]).forEach(s=> byDate[s.session_date] = s);
+
+      const fmt = "yyyyMMdd'T'HHmmss'Z'";
+      const events = [];
+      dates.forEach(dt=>{
+        const iso = dt.toISODate();
+        const s = byDate[iso];
+        if(s && s.no_meeting) return; // deliberately skipped, not just blank
+        const startUTC = dt.toUTC();
+        const endUTC = dt.set({ hour: eh, minute: em }).toUTC();
+        const topic = (s && s.topic) ? s.topic : `${orgLabel} meeting`;
+        events.push([
+          'BEGIN:VEVENT',
+          `UID:${crypto.randomUUID()}@concurrence.app`,
+          `DTSTART:${startUTC.toFormat(fmt)}`,
+          `DTEND:${endUTC.toFormat(fmt)}`,
+          `SUMMARY:${orgLabel} — ${topic}`,
+          `LOCATION:${meeting.address || ''}`,
+          'END:VEVENT'
+        ].join('\r\n'));
+      });
+
+      const ics = ['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Concurrence//EN', ...events, 'END:VCALENDAR'].join('\r\n');
+      const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${orgLabel.replace(/[^a-z0-9]+/gi,'-')}-program.ics`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } finally {
+      if(btn){ btn.disabled = false; btn.textContent = 'Download up-to-date program'; }
+    }
   }
 
   const DAYS_FULL = DAYS;
@@ -434,6 +503,7 @@
         </div>
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
           <a class="btn brass" href="${href}" download="${summary.replace(/[^a-z0-9]+/gi,'-')}.ics">Add to calendar</a>
+          <button class="btn ghost" id="programBtn">Download up-to-date program</button>
           ${isApproved ? '<button class="btn ghost" id="editMeetingBtn">Edit</button>' : ''}
         </div>
       </div>
@@ -441,6 +511,8 @@
       <div id="sessionMount" style="margin-top:14px;"></div>
       <div id="monthMount" style="margin-top:26px;"></div>
     `;
+
+    document.getElementById('programBtn').onclick = ()=> buildDivisionProgram(deepest.id, orgLabel, meeting);
 
     if(isApproved){
       document.getElementById('editMeetingBtn').onclick = ()=>{
