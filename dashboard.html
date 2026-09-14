@@ -5,7 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Concurrence — Dashboard</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<!-- Replace YOUR_GOOGLE_MAPS_API_KEY_HERE with your real, referrer-restricted key. -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css" />
+<!-- Google Maps API key — kept in place for all future edits to this file. -->
 <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCTmTJAiWikG3bMCg9bOF_ZIjEQlVzr28A&libraries=places&loading=async" async defer></script>
 <script src="https://cdn.jsdelivr.net/npm/luxon@3/build/global/luxon.min.js"></script>
 <style>
@@ -121,6 +122,14 @@
     return `<div style="font-size:10.5px;color:var(--ink-soft);margin-top:8px;">Last edited by ${esc(name)} on ${editedDate}</div>`;
   }
 
+  function editIconBtn(id, extraStyle){
+    return `<button id="${id}" title="Edit" aria-label="Edit" style="background:#fff;border:1px solid var(--stone-line);border-radius:6px;width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center;color:#8A6A24;cursor:pointer;flex:none;${extraStyle||''}"><i class="ti ti-edit" style="font-size:16px;" aria-hidden="true"></i></button>`;
+  }
+
+  function editIconBtnAttr(dataAttr, dataVal, extraStyle){
+    return `<button data-${dataAttr}="${dataVal}" title="Edit" aria-label="Edit" style="background:#fff;border:1px solid var(--stone-line);border-radius:6px;width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center;color:#8A6A24;cursor:pointer;flex:none;${extraStyle||''}"><i class="ti ti-edit" style="font-size:16px;" aria-hidden="true"></i></button>`;
+  }
+
   function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
   function markSvg(size){
@@ -135,10 +144,15 @@
     </svg>`;
   }
 
-  function videoBadge(hasLink){
+  function videoBadge(hasLink, url){
     const cls = hasLink ? 'active' : 'inactive';
-    const tip = hasLink ? 'Video Conference' : 'No video conference';
-    return `<span class="icon-badge ${cls}" data-tip="${tip}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 10.5V7a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-3.5l4 4v-11l-4 4z"/></svg></span>`;
+    const tip = hasLink ? 'Video Conference — click to join' : 'No video conference';
+    const svg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 10.5V7a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-3.5l4 4v-11l-4 4z"/></svg>`;
+    if(hasLink && url){
+      const safeUrl = /^https?:\/\//i.test(url) ? url : 'https://' + url;
+      return `<a href="${esc(safeUrl)}" target="_blank" rel="noopener" class="icon-badge ${cls}" data-tip="${tip}" style="cursor:pointer;">${svg}</a>`;
+    }
+    return `<span class="icon-badge ${cls}" data-tip="${tip}">${svg}</span>`;
   }
   function inPersonBadge(isInPerson){
     const cls = isInPerson ? 'active' : 'inactive';
@@ -222,7 +236,7 @@
       <div class="org-path">
         <div class="org-name">${esc(orgName)}</div>
         You're signed in at<br><b>${esc(deepest)}</b><br>${esc(ancestors)}
-        <div><button id="editPositionLink" style="background:none;border:none;color:var(--brass-soft);font-size:11.5px;text-decoration:underline;cursor:pointer;padding:6px 0 0;">Edit</button></div>
+        <div style="margin-top:6px;">${editIconBtn('editPositionLink')}</div>
       </div>
       <div class="nav">
         <a class="active" id="navDashboard">Dashboard</a>
@@ -235,7 +249,7 @@
       <div class="side-foot">
         Signed in as ${esc(profile.first_name)} ${esc(profile.last_name)}
         <a class="signout-link" id="signOutLink">Sign out</a>
-        <div style="margin-top:10px;opacity:0.5;">dashboard.html — v29</div>
+        <div style="margin-top:10px;opacity:0.5;">dashboard.html — v32</div>
       </div>
     `;
     const VIEWS = ['dashboardMount','otherEventsMount','libraryMount','keywordMount','profileMount','aboutMount'];
@@ -533,7 +547,7 @@
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
           <a class="btn brass" href="${href}" download="${summary.replace(/[^a-z0-9]+/gi,'-')}.ics">Add to calendar</a>
           <button class="btn ghost" id="programBtn">Download up-to-date program</button>
-          ${isApproved ? '<button class="btn ghost" id="editMeetingBtn">Edit</button>' : ''}
+          ${isApproved ? editIconBtn('editMeetingBtn') : ''}
         </div>
       </div>
       ${editorLine}
@@ -572,7 +586,7 @@
       box.innerHTML = `
         <div style="background:repeating-linear-gradient(135deg,var(--card),var(--card) 8px,#F1EEE6 8px,#F1EEE6 16px);border:1px dashed var(--stone-line);border-radius:6px;padding:14px 16px;">
           <div style="font-weight:600;font-size:13px;color:var(--ink-soft);">No meeting this week${session.no_meeting_reason ? ' — '+esc(session.no_meeting_reason) : ''}</div>
-          ${isApproved ? '<button class="btn ghost" id="sessEditBtn" style="margin-top:8px;border:1px solid var(--stone-line);color:var(--ink);">Edit</button>' : ''}
+          ${isApproved ? editIconBtn('sessEditBtn', 'margin-top:8px;') : ''}
           ${editLine}
         </div>`;
       if(isApproved) document.getElementById('sessEditBtn').onclick = ()=> openSessionModal(nodeId, orgLabel, isoDate, session, onSaved);
@@ -583,7 +597,7 @@
       box.innerHTML = `
         <div style="border:1px dashed var(--stone-line);border-radius:6px;padding:14px 16px;">
           <div style="color:var(--ink-soft);font-size:13px;">No topic set for this week yet.</div>
-          ${isApproved ? '<button class="btn brass" id="sessEditBtn" style="margin-top:8px;">Add topic</button>' : ''}
+          ${isApproved ? editIconBtn('sessEditBtn', 'margin-top:8px;') : ''}
         </div>`;
       if(isApproved) document.getElementById('sessEditBtn').onclick = ()=> openSessionModal(nodeId, orgLabel, isoDate, session, onSaved);
       return;
@@ -606,10 +620,11 @@
             <div style="font-size:11px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.03em;margin-bottom:4px;">This week's topic</div>
             <div style="font-size:14px;font-weight:600;display:flex;align-items:center;flex-wrap:wrap;gap:2px;">${esc(session.topic)}${jointHtml}</div>
             <div style="font-size:12px;color:var(--ink-soft);margin-top:4px;">${session.presenter ? esc(session.presenter) : ''}</div>
-            <div class="icon-badge-row" style="margin-top:8px;">${inPersonBadge(!!session.in_person)}${videoBadge(!!session.video_url)}</div>
+            <div class="icon-badge-row" style="margin-top:8px;">${inPersonBadge(!!session.in_person)}${videoBadge(!!session.video_url, session.video_url)}</div>
+            ${session.access_code ? `<div style="font-size:11px;color:var(--ink-soft);margin-top:6px;">Code: <b style="color:var(--ink);">${esc(session.access_code)}</b></div>` : ''}
             <div style="margin-top:8px;">${kwHtml}</div>
           </div>
-          ${isApproved ? '<button class="btn ghost" id="sessEditBtn" style="border:1px solid var(--stone-line);color:var(--ink);flex:none;">Edit</button>' : ''}
+          ${isApproved ? editIconBtn('sessEditBtn') : ''}
         </div>
         ${recHtml ? `<div style="margin-top:10px;">${recHtml}</div>` : ''}
         ${editLine}
@@ -641,7 +656,11 @@
           <input type="text" id="sTopic" placeholder="Topic" value="${esc(s.topic||'')}" style="padding:8px 10px;border:1px solid var(--stone-line);border-radius:5px;font-family:inherit;font-size:13px;">
           <input type="text" id="sPresenter" placeholder="Presenter name" value="${esc(s.presenter||'')}" style="padding:8px 10px;border:1px solid var(--stone-line);border-radius:5px;font-family:inherit;font-size:13px;">
           <label style="display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--ink-soft);"><input type="checkbox" id="sInPerson" ${s.in_person!==false?'checked':''}> In person</label>
-          <input type="text" id="sVideo" placeholder="Video link (leave blank if not online)" value="${esc(s.video_url||'')}" style="padding:8px 10px;border:1px solid var(--stone-line);border-radius:5px;font-family:inherit;font-size:13px;">
+          <div style="display:flex;gap:6px;">
+            <input type="text" id="sVideo" placeholder="Video link (leave blank if not online)" value="${esc(s.video_url||'')}" style="flex:1;padding:8px 10px;border:1px solid var(--stone-line);border-radius:5px;font-family:inherit;font-size:13px;">
+            <button type="button" id="sVideoOpen" style="flex:none;background:var(--stone);border:1px solid var(--stone-line);border-radius:5px;padding:0 12px;font-size:12px;font-weight:600;cursor:pointer;">Open</button>
+          </div>
+          <input type="text" id="sAccessCode" placeholder="Zoom / Teams code (optional)" value="${esc(s.access_code||'')}" style="padding:8px 10px;border:1px solid var(--stone-line);border-radius:5px;font-family:inherit;font-size:13px;">
           <input type="text" id="sKeywords" placeholder="Keywords, comma separated" value="${esc((s.keywords||[]).join(', '))}" style="padding:8px 10px;border:1px solid var(--stone-line);border-radius:5px;font-family:inherit;font-size:13px;">
           <label style="font-size:11.5px;color:var(--ink-soft);">Joint session with (optional)</label>
           <select id="sJoint" style="padding:8px 10px;border:1px solid var(--stone-line);border-radius:5px;font-family:inherit;font-size:13px;">
@@ -657,6 +676,11 @@
     document.body.appendChild(back);
     back.addEventListener('click', e=>{ if(e.target===back) back.remove(); });
     back.querySelector('#sCancel').onclick = ()=> back.remove();
+    back.querySelector('#sVideoOpen').onclick = ()=>{
+      const url = back.querySelector('#sVideo').value.trim();
+      if(!url){ alert('Enter a video link first.'); return; }
+      window.open(url.match(/^https?:\/\//i) ? url : 'https://' + url, '_blank', 'noopener');
+    };
     back.querySelector('#sNoMeeting').onchange = function(){
       const f = back.querySelector('#sFields');
       f.style.opacity = this.checked ? '0.4' : '1';
@@ -695,7 +719,8 @@
         p_in_person: noMeeting ? true : back.querySelector('#sInPerson').checked,
         p_video_url: noMeeting ? null : (back.querySelector('#sVideo').value.trim() || null),
         p_keywords: noMeeting ? [] : back.querySelector('#sKeywords').value.split(',').map(x=>x.trim()).filter(Boolean),
-        p_joint_with_node: noMeeting ? null : jointVal
+        p_joint_with_node: noMeeting ? null : jointVal,
+        p_access_code: noMeeting ? null : (back.querySelector('#sAccessCode').value.trim() || null)
       });
       if(error){
         back.querySelector('#sErr').textContent = error.message;
@@ -1447,11 +1472,11 @@
         anchorBody = `<div style="font-weight:600;font-size:13px;color:var(--ink-soft);">No meeting${s.no_meeting_reason ? ' — '+esc(s.no_meeting_reason) : ''}</div>`;
       } else if(s && s.topic){
         const joint = s.joint_with_node ? `<div style="font-size:9.5px;font-weight:700;color:#7C5CB8;margin-bottom:2px;">JOINT SESSION</div>` : '';
-        anchorBody = `${joint}<div style="font-size:13px;font-weight:600;">${esc(s.topic)}</div><div style="font-size:11px;color:var(--ink-soft);margin-top:2px;">${s.presenter?esc(s.presenter):''}</div><div class="icon-badge-row" style="margin-top:6px;">${inPersonBadge(!!s.in_person)}${videoBadge(!!s.video_url)}</div>`;
+        anchorBody = `${joint}<div style="font-size:13px;font-weight:600;">${esc(s.topic)}</div><div style="font-size:11px;color:var(--ink-soft);margin-top:2px;">${s.presenter?esc(s.presenter):''}</div><div class="icon-badge-row" style="margin-top:6px;">${inPersonBadge(!!s.in_person)}${videoBadge(!!s.video_url, s.video_url)}</div>${s.access_code ? `<div style="font-size:10px;color:var(--ink-soft);margin-top:5px;">Code: <b style="color:var(--ink);">${esc(s.access_code)}</b></div>` : ''}`;
       } else {
         anchorBody = `<div style="font-size:12px;color:var(--ink-soft);">No topic set yet.</div>`;
       }
-      const editBtn = isApproved ? `<button data-edit-date="${iso}" style="margin-top:8px;font-size:11px;padding:5px 9px;border:1px solid var(--stone-line);background:#fff;border-radius:4px;cursor:pointer;">${s && s.topic ? 'Edit' : 'Add topic'}</button>` : '';
+      const editBtn = isApproved ? editIconBtnAttr('edit-date', iso, 'margin-top:8px;') : '';
       const tileEditLine = formatEditedBySync(s && s.edited_by, s && s.edited_at, editorNameMap);
 
       const anchorHtml = `
@@ -1498,7 +1523,7 @@
         const topicLine = peerSession && peerSession.topic
           ? `${isJointWithMe?'Joint: ':'Next: '}<b>${esc(peerSession.topic)}</b>`
           : `No topic published yet`;
-        const peerBadges = peerSession ? `<div class="icon-badge-row" style="margin-top:5px;">${inPersonBadge(!!peerSession.in_person)}${videoBadge(!!peerSession.video_url)}</div>` : '';
+        const peerBadges = peerSession ? `<div class="icon-badge-row" style="margin-top:5px;">${inPersonBadge(!!peerSession.in_person)}${videoBadge(!!peerSession.video_url, peerSession.video_url)}</div>` : '';
         const cardStyle = isJointWithMe
           ? 'flex:none;width:180px;background:#FAF7FE;border:1px solid #B7A0DE;border-radius:6px;padding:11px 12px;'
           : 'flex:none;width:180px;background:var(--card);border:1px solid var(--stone-line);border-radius:6px;padding:11px 12px;';
