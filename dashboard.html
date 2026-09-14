@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Concurrence — Dashboard</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<!-- Replace YOUR_GOOGLE_MAPS_API_KEY_HERE with your real, referrer-restricted key. -->
+<script src="https://maps.googleapis.com/maps/api/js?key=YAIzaSyCTmTJAiWikG3bMCg9bOF_ZIjEQlVzr28A&libraries=places&loading=async" async defer></script>
 <script src="https://cdn.jsdelivr.net/npm/luxon@3/build/global/luxon.min.js"></script>
 <style>
   :root{
@@ -53,7 +55,6 @@
 
   .loading, .err, .empty{ padding:30px; text-align:center; color:var(--ink-soft); font-size:13px; }
   .err{ color:var(--ember); }
-  .version-tag{ position:fixed; bottom:6px; left:6px; font-size:10px; color:#B7B0A0; font-family:ui-monospace,monospace; z-index:100; background:rgba(255,255,255,0.7); padding:1px 5px; border-radius:3px; }
 
   /* icon badges — in-person / video status, with instant CSS tooltips */
   .icon-badge{ display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:5px; flex:none; position:relative; }
@@ -69,7 +70,6 @@
 </style>
 </head>
 <body>
-  <div class="version-tag">dashboard v25</div>
   <div class="shell">
     <div class="side" id="sideMount">
       <div class="side-brand">
@@ -235,7 +235,7 @@
       <div class="side-foot">
         Signed in as ${esc(profile.first_name)} ${esc(profile.last_name)}
         <a class="signout-link" id="signOutLink">Sign out</a>
-        <div style="margin-top:10px;opacity:0.5;">dashboard.html — v25</div>
+        <div style="margin-top:10px;opacity:0.5;">dashboard.html — v29</div>
       </div>
     `;
     const VIEWS = ['dashboardMount','otherEventsMount','libraryMount','keywordMount','profileMount','aboutMount'];
@@ -395,43 +395,18 @@
   const TIMEZONES = ['Australia/Perth','Australia/Darwin','Australia/Adelaide','Australia/Brisbane','Australia/Sydney','Australia/Melbourne','Australia/Hobart'];
   let sessionViewYear = DateTime.now().year;
   let sessionViewMonth = DateTime.now().month; // 1-12
-  const MOCK_PLACES = [
-    'Box Hill Community Centre, 1010 Whitehorse Rd, Box Hill VIC 3128',
-    'Ballarat Central Neighbourhood House, 12 Sturt St, Ballarat VIC 3350',
-    'Bendigo Senior Citizens Centre, 4 Short St, Bendigo VIC 3550',
-    'Toowoomba Uniting Church Hall, 88 Margaret St, Toowoomba QLD 4350',
-    'Stirling Community Centre, 60 Mount Barker Rd, Stirling SA 5152',
-    'Nambour Civic Centre, 24 Bury St, Nambour QLD 4560',
-    'Fremantle Town Hall, 8 William St, Fremantle WA 6160'
-  ];
-  function openMapPicker(targetInput){
-    const back = document.createElement('div');
-    back.style.cssText = 'position:fixed;inset:0;background:rgba(20,20,18,0.45);display:flex;align-items:center;justify-content:center;z-index:60;padding:16px;';
-    back.innerHTML = `
-      <div style="background:#fff;border-radius:8px;padding:22px 24px;max-width:420px;width:100%;max-height:86vh;overflow:auto;">
-        <h3 class="serif" style="margin:0 0 4px;font-size:16px;">Search for your meeting location</h3>
-        <p style="font-size:12px;color:var(--ink-soft);margin:0 0 14px;">Find your venue and we'll drop it into the address field.</p>
-        <input type="text" id="mapSearchInput" placeholder="Search an address or venue name…" style="width:100%;padding:9px 10px;border:1px solid var(--stone-line);border-radius:5px;font-family:inherit;font-size:13px;margin-bottom:12px;">
-        <div id="mapResults"></div>
-        <p style="font-size:11px;color:var(--ink-soft);margin-top:12px;line-height:1.5;">Placeholder search — will use the real Google Places picker once an API key is wired up.</p>
-        <div style="display:flex;justify-content:flex-end;margin-top:10px;"><button class="btn ghost" id="mapCancel" style="border:1px solid var(--stone-line);color:var(--ink);">Cancel</button></div>
-      </div>`;
-    document.body.appendChild(back);
-    back.addEventListener('click', e=>{ if(e.target===back) back.remove(); });
-    back.querySelector('#mapCancel').onclick = ()=> back.remove();
-    const searchInput = back.querySelector('#mapSearchInput');
-    const results = back.querySelector('#mapResults');
-    function renderResults(){
-      const q = searchInput.value.trim().toLowerCase();
-      const matches = (q ? MOCK_PLACES.filter(p=>p.toLowerCase().includes(q)) : MOCK_PLACES).slice(0,6);
-      results.innerHTML = matches.length
-        ? matches.map(p=>`<div class="opt" data-p="${esc(p)}" style="padding:9px 4px;border-top:1px solid var(--stone-line);font-size:13px;cursor:pointer;">${esc(p)}</div>`).join('')
-        : `<div style="padding:9px 4px;color:var(--ink-soft);font-size:13px;">No sample venues match — try a broader search.</div>`;
-      results.querySelectorAll('.opt').forEach(o=>{ o.onclick = ()=>{ targetInput.value = o.dataset.p; back.remove(); }; });
+
+  // Attaches Google's real Places Autocomplete to an address input. The
+  // Maps JS script loads async in <head>, so this retries briefly in case
+  // a modal opens before it's ready, rather than failing silently.
+  function attachPlacesAutocomplete(inputEl, attempt){
+    attempt = attempt || 0;
+    if(window.google && window.google.maps && window.google.maps.places){
+      new google.maps.places.Autocomplete(inputEl, { types: ['geocode'] });
+      return;
     }
-    searchInput.addEventListener('input', renderResults);
-    renderResults();
-    searchInput.focus();
+    if(attempt < 20) setTimeout(()=> attachPlacesAutocomplete(inputEl, attempt+1), 250);
+    else console.warn('Google Places did not load in time — address field will work as plain text.');
   }
 
   function openEditMeetingModal(nodeId, orgLabel, meeting, onSaved){
@@ -441,10 +416,7 @@
       <div style="background:#fff;border-radius:8px;padding:22px 24px;max-width:420px;width:100%;max-height:86vh;overflow:auto;">
         <h3 class="serif" style="margin:0 0 14px;font-size:16px;">Edit ${esc(orgLabel)}'s meeting</h3>
         <label style="display:block;font-size:11.5px;color:var(--ink-soft);margin-bottom:5px;">Meeting location</label>
-        <div style="display:flex;gap:8px;margin-bottom:12px;">
-          <input type="text" id="eAddress" value="${esc(meeting.address||'')}" style="flex:1;padding:9px 10px;border:1px solid var(--stone-line);border-radius:5px;font-family:inherit;font-size:13px;">
-          <button type="button" id="eMapBtn" style="flex:none;background:var(--stone);border:1px solid var(--stone-line);border-radius:5px;padding:0 12px;font-size:12px;font-weight:600;">Search map</button>
-        </div>
+        <input type="text" id="eAddress" placeholder="Start typing an address…" value="${esc(meeting.address||'')}" style="width:100%;padding:9px 10px;border:1px solid var(--stone-line);border-radius:5px;font-family:inherit;font-size:13px;margin-bottom:12px;box-sizing:border-box;">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
           <div><label style="display:block;font-size:11.5px;color:var(--ink-soft);margin-bottom:5px;">Frequency</label>
             <select id="eFreq" style="width:100%;padding:9px 10px;border:1px solid var(--stone-line);border-radius:5px;font-family:inherit;font-size:13px;">
@@ -474,7 +446,7 @@
     document.body.appendChild(back);
     back.addEventListener('click', e=>{ if(e.target===back) back.remove(); });
     back.querySelector('#eCancel').onclick = ()=> back.remove();
-    back.querySelector('#eMapBtn').onclick = ()=> openMapPicker(back.querySelector('#eAddress'));
+    attachPlacesAutocomplete(back.querySelector('#eAddress'));
     back.querySelector('#eSave').onclick = async ()=>{
       const btn = back.querySelector('#eSave'); btn.disabled = true; btn.textContent = 'Saving…';
       const { error } = await sb.rpc('save_meeting', {
@@ -495,6 +467,11 @@
   async function renderMyMeeting(profile, nodePath, isApproved){
     const deepest = nodePath.length ? nodePath[nodePath.length-1] : null;
     const orgLabel = deepest ? deepest.name : 'your group';
+    let heroTitle = orgLabel;
+    if(deepest && deepest.level_id){
+      const { data: levelRow } = await sb.from('hierarchy_levels').select('name').eq('id', deepest.level_id).maybeSingle();
+      if(levelRow && levelRow.name) heroTitle = `${levelRow.name}: ${deepest.name}`;
+    }
 
     mainMount.innerHTML = `
       <div id="dashboardMount">
@@ -547,7 +524,7 @@
         <div style="display:flex;align-items:center;gap:14px;">
           ${markSvg(34)}
           <div>
-            <div class="unit-title serif">${esc(orgLabel)}</div>
+            <div class="unit-title serif">${esc(heroTitle)}</div>
             <div class="lbl">Your group's next meeting</div>
             <div class="when serif">${esc(whenLabel)}</div>
             <div class="where">${esc(meeting.address || 'No address on file')} · ${esc(meeting.frequency)}</div>
@@ -737,6 +714,50 @@
   }
 
   // ---------- Concurrent Meetings: same hierarchy level, overlapping time, same org ----------
+  function openMessageModal(targetNodeId, targetName){
+    const back = document.createElement('div');
+    back.style.cssText = 'position:fixed;inset:0;background:rgba(20,20,18,0.45);display:flex;align-items:center;justify-content:center;z-index:60;padding:16px;';
+    back.innerHTML = `
+      <div style="background:#fff;border-radius:8px;padding:22px 24px;max-width:400px;width:100%;">
+        <h3 class="serif" style="margin:0 0 8px;font-size:16px;">Message ${esc(targetName)}</h3>
+        <p style="font-size:12.5px;color:var(--ink-soft);margin:0 0 14px;">This goes to their organisational contacts by email, with your name and email attached so they can reply directly.</p>
+        <textarea id="msgBody" placeholder="Your message…" style="width:100%;min-height:100px;padding:9px 10px;border:1px solid var(--stone-line);border-radius:5px;font-family:inherit;font-size:13px;box-sizing:border-box;"></textarea>
+        <div id="msgErr" style="font-size:11.5px;color:var(--ember);min-height:14px;margin-top:6px;"></div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;">
+          <button class="btn ghost" id="msgCancel" style="border:1px solid var(--stone-line);color:var(--ink);">Cancel</button>
+          <button class="btn brass" id="msgSend">Send</button>
+        </div>
+      </div>`;
+    document.body.appendChild(back);
+    back.addEventListener('click', e=>{ if(e.target===back) back.remove(); });
+    back.querySelector('#msgCancel').onclick = ()=> back.remove();
+    back.querySelector('#msgSend').onclick = async ()=>{
+      const btn = back.querySelector('#msgSend'); btn.disabled = true; btn.textContent = 'Sending…';
+      const msg = back.querySelector('#msgBody').value.trim();
+      if(!msg){
+        back.querySelector('#msgErr').textContent = 'Write a message first.';
+        btn.disabled = false; btn.textContent = 'Send'; return;
+      }
+      const { data: contactRequestId, error } = await sb.rpc('send_division_message', { p_target_node_id: targetNodeId, p_message: msg });
+      if(error){ back.querySelector('#msgErr').textContent = error.message; btn.disabled = false; btn.textContent = 'Send'; return; }
+      sb.functions.invoke('notify-request', { body: { contactRequestId } })
+        .catch(err => console.error('Message notification failed to send:', err));
+      back.remove();
+    };
+  }
+
+  function messageIconBtn(targetNodeId, targetName){
+    return `<button data-msg="${targetNodeId}" data-msg-name="${esc(targetName)}" title="Message ${esc(targetName)}" style="background:none;border:none;cursor:pointer;padding:2px;color:var(--ink-soft);display:inline-flex;vertical-align:middle;margin-left:5px;">
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+    </button>`;
+  }
+
+  function wireMessageIcons(container){
+    container.querySelectorAll('[data-msg]').forEach(btn=>{
+      btn.onclick = ()=> openMessageModal(btn.dataset.msg, btn.dataset.msgName);
+    });
+  }
+
   function openSisterRequestModal(targetNodeId, targetName, onDone){
     const back = document.createElement('div');
     back.style.cssText = 'position:fixed;inset:0;background:rgba(20,20,18,0.45);display:flex;align-items:center;justify-content:center;z-index:60;padding:16px;';
@@ -826,11 +847,15 @@
         const peerId = r.node_a===deepest.id ? r.node_b : r.node_a;
         return `<div style="background:var(--card);border:1px solid var(--stone-line);border-radius:6px;padding:12px 14px;min-width:180px;">
           <div style="font-size:13px;font-weight:600;">${esc(nameOf(peerId))}</div>
-          <div style="font-size:10.5px;color:#2E6B44;background:#DDEAE0;display:inline-block;border-radius:10px;padding:2px 8px;margin-top:5px;">Sister division</div>
+          <div style="display:flex;align-items:center;margin-top:5px;">
+            <span style="font-size:10.5px;color:#2E6B44;background:#DDEAE0;border-radius:10px;padding:2px 8px;">Sister division</span>
+            ${messageIconBtn(peerId, nameOf(peerId))}
+          </div>
         </div>`;
       }).join('') + `</div>`;
     }
     mount.innerHTML = html;
+    wireMessageIcons(mount);
     mount.querySelectorAll('[data-respond2]').forEach(btn=>{
       btn.onclick = ()=> openRespondModal(btn.dataset.respond2, btn.dataset.name2, onDone);
     });
@@ -1464,7 +1489,7 @@
 
         let actionHtml;
         if(!rel) actionHtml = `<button class="btn brass" data-req="${pm.node_id}" data-name="${esc(peer.name)}" style="font-size:11px;padding:5px 9px;margin-top:6px;">Become sisters</button>`;
-        else if(rel.status==='confirmed') actionHtml = `<span style="display:inline-block;background:#DDEAE0;color:#2E6B44;border-radius:10px;padding:2px 8px;font-size:10.5px;font-weight:600;margin-top:6px;">Sister division</span>`;
+        else if(rel.status==='confirmed') actionHtml = `<div style="margin-top:6px;display:flex;align-items:center;"><span style="display:inline-block;background:#DDEAE0;color:#2E6B44;border-radius:10px;padding:2px 8px;font-size:10.5px;font-weight:600;">Sister division</span>${messageIconBtn(pm.node_id, peer.name)}</div>`;
         else if(rel.status==='pending' && rel.iAmNodeA) actionHtml = `<span style="display:inline-block;background:#F2E9D3;color:#8A6A24;border-radius:10px;padding:2px 8px;font-size:10.5px;font-weight:600;margin-top:6px;">Request sent</span>`;
         else if(rel.status==='pending' && !rel.iAmNodeA) actionHtml = `<button class="btn brass" data-respond="${rel.id}" data-name="${esc(peer.name)}" style="font-size:11px;padding:5px 9px;margin-top:6px;">Respond to request</button>`;
         else actionHtml = `<span style="font-size:10.5px;color:var(--ink-soft);margin-top:6px;display:inline-block;">Declined</span>`;
@@ -1510,6 +1535,7 @@
     rowsEl.querySelectorAll('[data-respond]').forEach(btn=>{
       btn.onclick = ()=> openRespondModal(btn.dataset.respond, btn.dataset.name, refreshMonth);
     });
+    wireMessageIcons(rowsEl);
   }
 
   boot();
