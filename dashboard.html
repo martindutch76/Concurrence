@@ -69,7 +69,7 @@
 </style>
 </head>
 <body>
-  <div class="version-tag">dashboard v23</div>
+  <div class="version-tag">dashboard v25</div>
   <div class="shell">
     <div class="side" id="sideMount">
       <div class="side-brand">
@@ -101,6 +101,25 @@
   const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
   const mainMount = document.getElementById('mainMount');
   const sideMount = document.getElementById('sideMount');
+
+  function formatEditedBySync(editedBy, editedAt, editorNameMap){
+    if(!editedBy || !editedAt) return '';
+    const name = (editorNameMap && editorNameMap[editedBy]) || 'unknown';
+    const editedDate = DateTime.fromISO(editedAt).toFormat('d LLL, h:mma');
+    return `<div style="font-size:9.5px;color:var(--ink-soft);margin-top:6px;">Edited by ${esc(name)}, ${editedDate}</div>`;
+  }
+
+  async function editedByLine(editedBy, editedAt, editorNameMap){
+    if(!editedBy || !editedAt) return '';
+    let name;
+    if(editorNameMap && editorNameMap[editedBy]) name = editorNameMap[editedBy];
+    else {
+      const { data: editor } = await sb.from('profiles').select('first_name,last_name').eq('id', editedBy).maybeSingle();
+      name = editor ? `${editor.first_name} ${editor.last_name}` : 'unknown';
+    }
+    const editedDate = DateTime.fromISO(editedAt).toFormat('d LLL yyyy, h:mma');
+    return `<div style="font-size:10.5px;color:var(--ink-soft);margin-top:8px;">Last edited by ${esc(name)} on ${editedDate}</div>`;
+  }
 
   function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
@@ -216,7 +235,7 @@
       <div class="side-foot">
         Signed in as ${esc(profile.first_name)} ${esc(profile.last_name)}
         <a class="signout-link" id="signOutLink">Sign out</a>
-        <div style="margin-top:10px;opacity:0.5;">dashboard.html — v23</div>
+        <div style="margin-top:10px;opacity:0.5;">dashboard.html — v25</div>
       </div>
     `;
     const VIEWS = ['dashboardMount','otherEventsMount','libraryMount','keywordMount','profileMount','aboutMount'];
@@ -572,10 +591,12 @@
     const session = (data && data[0]) ? data[0] : null;
 
     if(session && session.no_meeting){
+      const editLine = await editedByLine(session.edited_by, session.edited_at);
       box.innerHTML = `
         <div style="background:repeating-linear-gradient(135deg,var(--card),var(--card) 8px,#F1EEE6 8px,#F1EEE6 16px);border:1px dashed var(--stone-line);border-radius:6px;padding:14px 16px;">
           <div style="font-weight:600;font-size:13px;color:var(--ink-soft);">No meeting this week${session.no_meeting_reason ? ' — '+esc(session.no_meeting_reason) : ''}</div>
           ${isApproved ? '<button class="btn ghost" id="sessEditBtn" style="margin-top:8px;border:1px solid var(--stone-line);color:var(--ink);">Edit</button>' : ''}
+          ${editLine}
         </div>`;
       if(isApproved) document.getElementById('sessEditBtn').onclick = ()=> openSessionModal(nodeId, orgLabel, isoDate, session, onSaved);
       return;
@@ -600,6 +621,7 @@
     const recHtml = session.recording_url
       ? `<a href="${esc(session.recording_url)}" target="_blank" rel="noopener" style="font-size:11px;color:#2E6B44;font-weight:600;text-decoration:none;">▶ Watch recording</a>`
       : (isApproved ? `<button id="recAddBtn" style="background:none;border:none;color:var(--ink-soft);font-size:11px;text-decoration:underline;cursor:pointer;padding:0;">+ Add recording</button>` : '');
+    const editLine = await editedByLine(session.edited_by, session.edited_at);
     box.innerHTML = `
       <div style="border:1px solid var(--stone-line);border-radius:6px;padding:16px 18px;background:var(--card);">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
@@ -613,6 +635,7 @@
           ${isApproved ? '<button class="btn ghost" id="sessEditBtn" style="border:1px solid var(--stone-line);color:var(--ink);flex:none;">Edit</button>' : ''}
         </div>
         ${recHtml ? `<div style="margin-top:10px;">${recHtml}</div>` : ''}
+        ${editLine}
       </div>`;
     if(isApproved) document.getElementById('sessEditBtn').onclick = ()=> openSessionModal(nodeId, orgLabel, isoDate, session, onSaved);
     if(isApproved && !session.recording_url){
@@ -1183,10 +1206,18 @@
     if(error){ listEl.innerHTML = `<div class="err">${esc(error.message)}</div>`; return; }
     if(!events || !events.length){ listEl.innerHTML = `<div class="empty">No upcoming events from your Region, State or National body yet.</div>`; return; }
 
+    const eventEditorIds = [...new Set(events.filter(e=>e.edited_by).map(e=>e.edited_by))];
+    let eventEditorMap = {};
+    if(eventEditorIds.length){
+      const { data: editors } = await sb.from('profiles').select('id,first_name,last_name').in('id', eventEditorIds);
+      (editors||[]).forEach(e=> eventEditorMap[e.id] = `${e.first_name} ${e.last_name}`);
+    }
+
     listEl.innerHTML = events.map(ev=>{
       const dateLabel = DateTime.fromISO(ev.event_date).toFormat('cccc d LLL yyyy');
       const timeLabel = ev.start_time ? `${ev.start_time.slice(0,5)}${ev.end_time ? '–'+ev.end_time.slice(0,5) : ''} (${ev.timezone})` : '';
       const kw = (ev.keywords||[]).map(k=>`<span style="display:inline-block;background:var(--stone);border-radius:10px;padding:1px 8px;font-size:10px;color:var(--ink-soft);margin-right:4px;">${esc(k)}</span>`).join('');
+      const evEditLine = formatEditedBySync(ev.edited_by, ev.edited_at, eventEditorMap);
       return `
         <div style="background:var(--card);border:1px solid var(--stone-line);border-radius:6px;padding:16px 18px;margin-bottom:10px;">
           <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
@@ -1196,6 +1227,7 @@
               <div style="font-size:12px;color:var(--ink-soft);margin-top:3px;">${esc(dateLabel)}${timeLabel ? ' · '+esc(timeLabel) : ''}</div>
               ${ev.address ? `<div style="font-size:12px;color:var(--ink-soft);margin-top:2px;">${esc(ev.address)}</div>` : ''}
               <div style="margin-top:6px;">${kw}</div>
+              ${evEditLine}
             </div>
             <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;flex:none;">
               ${ev.video_url ? `<a href="${esc(ev.video_url)}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;background:var(--night);color:#fff;border-radius:5px;padding:7px 14px;font-size:12px;font-weight:600;text-decoration:none;"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 10.5V7a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-3.5l4 4v-11l-4 4z"/></svg>Join</a>` : ''}
@@ -1335,6 +1367,13 @@
     const myByDate = {};
     (mySessions||[]).forEach(s=> myByDate[s.session_date] = s);
 
+    const editorIds = [...new Set((mySessions||[]).filter(s=>s.edited_by).map(s=>s.edited_by))];
+    let editorNameMap = {};
+    if(editorIds.length){
+      const { data: editors } = await sb.from('profiles').select('id,first_name,last_name').in('id', editorIds);
+      (editors||[]).forEach(e=> editorNameMap[e.id] = `${e.first_name} ${e.last_name}`);
+    }
+
     // Peers at the same level, for per-date concurrent overlap.
     let peers = [], peerMeetings = [], relByPeer = {}, peerSessions = [];
     if(deepest){
@@ -1360,7 +1399,7 @@
         const rangeStart = dates[0].minus({ days: 4 }).toISODate();
         const rangeEnd = dates[dates.length-1].plus({ days: 4 }).toISODate();
         const { data: ps } = await sb.from('sessions')
-          .select('node_id, session_date, topic, presenter, joint_with_node')
+          .select('node_id, session_date, topic, presenter, joint_with_node, in_person, video_url')
           .in('node_id', peers.map(p=>p.id))
           .gte('session_date', rangeStart).lte('session_date', rangeEnd);
         peerSessions = ps || [];
@@ -1383,11 +1422,12 @@
         anchorBody = `<div style="font-weight:600;font-size:13px;color:var(--ink-soft);">No meeting${s.no_meeting_reason ? ' — '+esc(s.no_meeting_reason) : ''}</div>`;
       } else if(s && s.topic){
         const joint = s.joint_with_node ? `<div style="font-size:9.5px;font-weight:700;color:#7C5CB8;margin-bottom:2px;">JOINT SESSION</div>` : '';
-        anchorBody = `${joint}<div style="font-size:13px;font-weight:600;">${esc(s.topic)}</div><div style="font-size:11px;color:var(--ink-soft);margin-top:2px;">${s.presenter?esc(s.presenter):''}</div>`;
+        anchorBody = `${joint}<div style="font-size:13px;font-weight:600;">${esc(s.topic)}</div><div style="font-size:11px;color:var(--ink-soft);margin-top:2px;">${s.presenter?esc(s.presenter):''}</div><div class="icon-badge-row" style="margin-top:6px;">${inPersonBadge(!!s.in_person)}${videoBadge(!!s.video_url)}</div>`;
       } else {
         anchorBody = `<div style="font-size:12px;color:var(--ink-soft);">No topic set yet.</div>`;
       }
       const editBtn = isApproved ? `<button data-edit-date="${iso}" style="margin-top:8px;font-size:11px;padding:5px 9px;border:1px solid var(--stone-line);background:#fff;border-radius:4px;cursor:pointer;">${s && s.topic ? 'Edit' : 'Add topic'}</button>` : '';
+      const tileEditLine = formatEditedBySync(s && s.edited_by, s && s.edited_at, editorNameMap);
 
       const anchorHtml = `
         <div class="${anchorClass}" style="flex:none;width:230px;background:var(--card);border:1px solid var(--stone-line);border-radius:6px;padding:13px 14px;">
@@ -1398,6 +1438,7 @@
           </div>
           ${anchorBody}
           ${editBtn}
+          ${tileEditLine}
         </div>`;
 
       const myOcc = occurrenceOnDate(iso, meeting.start_time, meeting.end_time, meeting.timezone);
@@ -1432,6 +1473,7 @@
         const topicLine = peerSession && peerSession.topic
           ? `${isJointWithMe?'Joint: ':'Next: '}<b>${esc(peerSession.topic)}</b>`
           : `No topic published yet`;
+        const peerBadges = peerSession ? `<div class="icon-badge-row" style="margin-top:5px;">${inPersonBadge(!!peerSession.in_person)}${videoBadge(!!peerSession.video_url)}</div>` : '';
         const cardStyle = isJointWithMe
           ? 'flex:none;width:180px;background:#FAF7FE;border:1px solid #B7A0DE;border-radius:6px;padding:11px 12px;'
           : 'flex:none;width:180px;background:var(--card);border:1px solid var(--stone-line);border-radius:6px;padding:11px 12px;';
@@ -1442,6 +1484,7 @@
             <div style="font-size:11.5px;font-weight:600;margin:4px 0 1px;">${timeLabel}</div>
             <div style="font-size:10px;color:var(--ink-soft);margin-bottom:5px;">${esc(theirLabel)}</div>
             <div style="font-size:10.5px;${peerSession && peerSession.topic ? '' : 'color:var(--ink-soft);'}">${topicLine}</div>
+            ${peerBadges}
             ${actionHtml}
           </div>`);
       });
