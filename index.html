@@ -46,11 +46,9 @@
   .resend a:hover{ text-decoration:underline; }
   .form-state.hide{ display:none; }
   .checking{ text-align:center; color:var(--ink-soft); font-size:13px; padding:20px 0; }
-  .version-tag{ position:fixed; bottom:6px; left:6px; font-size:10px; color:#9FADA7; font-family:ui-monospace,monospace; z-index:100; }
 </style>
 </head>
 <body>
-  <div class="version-tag">index v2</div>
   <div class="wrap">
     <div class="brand-row">
       <svg viewBox="0 0 120 120">
@@ -90,6 +88,7 @@
         <div class="resend"><a id="resendLink">Resend</a> or <a id="backLink">use a different email</a></div>
       </div>
     </div>
+    <div style="text-align:center;font-size:11px;color:#9FADA7;opacity:0.6;margin-top:14px;">Beta 1.00</div>
   </div>
 
 <script>
@@ -174,6 +173,13 @@
   // Fires once Supabase has processed a magic-link redirect (or on normal
   // page load if a session already exists in local storage).
   sb.auth.onAuthStateChange((event, session)=>{
+    if(event === 'SIGNED_IN'){
+      // A genuine fresh login just happened — start the 1-hour clock.
+      // Deliberately NOT reset on INITIAL_SESSION (just revisiting this
+      // page with an existing session) — this is a hard time-box from
+      // the actual login moment, not a sliding "stay active" window.
+      localStorage.setItem('concurrence_session_started', Date.now().toString());
+    }
     if(event === 'SIGNED_IN' || event === 'INITIAL_SESSION'){
       if(session){ routeSignedInUser(); }
       else { showForm(); }

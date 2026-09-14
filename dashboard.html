@@ -160,9 +160,25 @@
     return `<span class="icon-badge ${cls}" data-tip="${tip}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11.2a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.8" r="2.4"/></svg></span>`;
   }
 
+  // ---------- 1-hour session time-box (free, client-side alternative to
+  // Supabase's paid time-boxed-sessions feature) ----------
+  const SESSION_MAX_MS = 60 * 60 * 1000;
+  async function enforceSessionTimeBox(){
+    const started = parseInt(localStorage.getItem('concurrence_session_started') || '0', 10);
+    if(!started || (Date.now() - started) > SESSION_MAX_MS){
+      await sb.auth.signOut().catch(()=>{});
+      localStorage.removeItem('concurrence_session_started');
+      window.location.href = 'index.html';
+      return true;
+    }
+    return false;
+  }
+  setInterval(()=> enforceSessionTimeBox(), 60000); // catches a tab left open past the hour
+
   // ---------- boot ----------
   async function boot(){
     try{
+      if(await enforceSessionTimeBox()) return;
       const { data: { user } } = await sb.auth.getUser();
       if(!user){ window.location.href = 'index.html'; return; }
 
@@ -249,7 +265,7 @@
       <div class="side-foot">
         Signed in as ${esc(profile.first_name)} ${esc(profile.last_name)}
         <a class="signout-link" id="signOutLink">Sign out</a>
-        <div style="margin-top:10px;opacity:0.5;">dashboard.html — v32</div>
+        <div style="margin-top:10px;opacity:0.5;">Beta 1.00</div>
       </div>
     `;
     const VIEWS = ['dashboardMount','otherEventsMount','libraryMount','keywordMount','profileMount','aboutMount'];
@@ -273,6 +289,7 @@
     document.getElementById('navAbout').onclick = ()=> window.__showView('aboutMount');
     document.getElementById('signOutLink').onclick = async ()=>{
       await sb.auth.signOut();
+      localStorage.removeItem('concurrence_session_started');
       window.location.href = 'index.html';
     };
   }
@@ -534,7 +551,8 @@
     }
 
     mount.innerHTML = `
-      <div class="next-card">
+      <div class="next-card" style="position:relative;">
+        ${isApproved ? editIconBtn('editMeetingBtn', 'position:absolute;top:14px;right:14px;') : ''}
         <div style="display:flex;align-items:center;gap:14px;">
           ${markSvg(34)}
           <div>
@@ -547,7 +565,6 @@
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
           <a class="btn brass" href="${href}" download="${summary.replace(/[^a-z0-9]+/gi,'-')}.ics">Add to calendar</a>
           <button class="btn ghost" id="programBtn">Download up-to-date program</button>
-          ${isApproved ? editIconBtn('editMeetingBtn') : ''}
         </div>
       </div>
       ${editorLine}
@@ -584,9 +601,9 @@
     if(session && session.no_meeting){
       const editLine = await editedByLine(session.edited_by, session.edited_at);
       box.innerHTML = `
-        <div style="background:repeating-linear-gradient(135deg,var(--card),var(--card) 8px,#F1EEE6 8px,#F1EEE6 16px);border:1px dashed var(--stone-line);border-radius:6px;padding:14px 16px;">
-          <div style="font-weight:600;font-size:13px;color:var(--ink-soft);">No meeting this week${session.no_meeting_reason ? ' — '+esc(session.no_meeting_reason) : ''}</div>
-          ${isApproved ? editIconBtn('sessEditBtn', 'margin-top:8px;') : ''}
+        <div style="position:relative;background:repeating-linear-gradient(135deg,var(--card),var(--card) 8px,#F1EEE6 8px,#F1EEE6 16px);border:1px dashed var(--stone-line);border-radius:6px;padding:14px 16px;">
+          ${isApproved ? editIconBtn('sessEditBtn', 'position:absolute;top:12px;right:12px;') : ''}
+          <div style="font-weight:600;font-size:13px;color:var(--ink-soft);padding-right:36px;">No meeting this week${session.no_meeting_reason ? ' — '+esc(session.no_meeting_reason) : ''}</div>
           ${editLine}
         </div>`;
       if(isApproved) document.getElementById('sessEditBtn').onclick = ()=> openSessionModal(nodeId, orgLabel, isoDate, session, onSaved);
@@ -595,9 +612,9 @@
 
     if(!session || !session.topic){
       box.innerHTML = `
-        <div style="border:1px dashed var(--stone-line);border-radius:6px;padding:14px 16px;">
-          <div style="color:var(--ink-soft);font-size:13px;">No topic set for this week yet.</div>
-          ${isApproved ? editIconBtn('sessEditBtn', 'margin-top:8px;') : ''}
+        <div style="position:relative;border:1px dashed var(--stone-line);border-radius:6px;padding:14px 16px;">
+          ${isApproved ? editIconBtn('sessEditBtn', 'position:absolute;top:12px;right:12px;') : ''}
+          <div style="color:var(--ink-soft);font-size:13px;padding-right:36px;">No topic set for this week yet.</div>
         </div>`;
       if(isApproved) document.getElementById('sessEditBtn').onclick = ()=> openSessionModal(nodeId, orgLabel, isoDate, session, onSaved);
       return;
@@ -614,9 +631,10 @@
       : (isApproved ? `<button id="recAddBtn" style="background:none;border:none;color:var(--ink-soft);font-size:11px;text-decoration:underline;cursor:pointer;padding:0;">+ Add recording</button>` : '');
     const editLine = await editedByLine(session.edited_by, session.edited_at);
     box.innerHTML = `
-      <div style="border:1px solid var(--stone-line);border-radius:6px;padding:16px 18px;background:var(--card);">
+      <div style="position:relative;border:1px solid var(--stone-line);border-radius:6px;padding:16px 18px;background:var(--card);">
+        ${isApproved ? editIconBtn('sessEditBtn', 'position:absolute;top:14px;right:14px;') : ''}
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
-          <div>
+          <div style="padding-right:${isApproved ? '38px' : '0'};">
             <div style="font-size:11px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.03em;margin-bottom:4px;">This week's topic</div>
             <div style="font-size:14px;font-weight:600;display:flex;align-items:center;flex-wrap:wrap;gap:2px;">${esc(session.topic)}${jointHtml}</div>
             <div style="font-size:12px;color:var(--ink-soft);margin-top:4px;">${session.presenter ? esc(session.presenter) : ''}</div>
@@ -624,7 +642,6 @@
             ${session.access_code ? `<div style="font-size:11px;color:var(--ink-soft);margin-top:6px;">Code: <b style="color:var(--ink);">${esc(session.access_code)}</b></div>` : ''}
             <div style="margin-top:8px;">${kwHtml}</div>
           </div>
-          ${isApproved ? editIconBtn('sessEditBtn') : ''}
         </div>
         ${recHtml ? `<div style="margin-top:10px;">${recHtml}</div>` : ''}
         ${editLine}
@@ -1476,18 +1493,18 @@
       } else {
         anchorBody = `<div style="font-size:12px;color:var(--ink-soft);">No topic set yet.</div>`;
       }
-      const editBtn = isApproved ? editIconBtnAttr('edit-date', iso, 'margin-top:8px;') : '';
+      const editBtn = isApproved ? editIconBtnAttr('edit-date', iso, 'position:absolute;top:10px;right:10px;width:26px;height:26px;') : '';
       const tileEditLine = formatEditedBySync(s && s.edited_by, s && s.edited_at, editorNameMap);
 
       const anchorHtml = `
-        <div class="${anchorClass}" style="flex:none;width:230px;background:var(--card);border:1px solid var(--stone-line);border-radius:6px;padding:13px 14px;">
-          <div style="display:flex;align-items:baseline;gap:7px;margin-bottom:8px;">
+        <div class="${anchorClass}" style="position:relative;flex:none;width:230px;background:var(--card);border:1px solid var(--stone-line);border-radius:6px;padding:13px 14px;">
+          ${editBtn}
+          <div style="display:flex;align-items:baseline;gap:7px;margin-bottom:8px;padding-right:${isApproved ? '30px' : '0'};">
             <span style="font-size:20px;font-weight:600;line-height:1;">${dayNum}</span>
             <span style="font-size:10.5px;color:var(--ink-soft);text-transform:uppercase;">${monAbbr}</span>
             ${isToday ? '<span style="font-size:9px;background:var(--brass);color:var(--night-deep);border-radius:8px;padding:1px 6px;font-weight:700;margin-left:auto;">TODAY</span>' : ''}
           </div>
           ${anchorBody}
-          ${editBtn}
           ${tileEditLine}
         </div>`;
 
